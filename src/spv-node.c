@@ -393,6 +393,7 @@ static int on_write(struct pollfd * pfd, void * user_data)
 	ssize_t length = out_buf->length;
 	
 	while(length > 0) {
+		printf("%s(length=%ld)\n", __FUNCTION__, (long)length); 
 		cb = write(pfd->fd, data, length);
 		if(cb <= 0) {
 			if(length < 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) break;
@@ -478,9 +479,12 @@ static int add_message_version(spv_node_context_t * spv, int protocol_version)
 	unsigned char hash[32];
 	hash256(payload, cb, hash);
 	memcpy(&hdr->checksum, hash, 4);
+	
 	auto_buffer_push(out_buf, hdr, sizeof(hdr));
 	auto_buffer_push(out_buf, payload, cb);
 	
+	free(payload);
+	payload = NULL;
 	
 	dump_line("raw data: ", out_buf->data, out_buf->length);
 

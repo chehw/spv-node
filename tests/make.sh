@@ -12,8 +12,6 @@ RET=0
 echo "build '${target}' ..."
 case "$target" in
 	google-oauth2)
-		echo "${LINKER} -g ${CFLAGS} ... "
-		
 		${LINKER} -g -D_DEBUG ${CFLAGS} \
 			-D_TEST_GOOGLE_OAUTH2 -D_STAND_ALONE \
 			-o "test_$target" \
@@ -22,7 +20,16 @@ case "$target" in
 			${LIBS} -lcurl
 		RET=$?
 		;;
-
+	gcloud-storage)
+		${LINKER} -g -D_DEBUG ${CFLAGS} \
+			-D_TEST_GCLOUD_STORAGE -D_STAND_ALONE \
+			-o "test_$target" \
+			../src/gcloud/gcloud-storage.c \
+			../src/gcloud/google-oauth2.c \
+			../utils/*.c \
+			${LIBS} -lcurl
+		RET=$?
+		;;
 	oauth_jwt-test)
 		${LINKER} -g ${CFLAGS} \
 			-o oauth_jwt-test \

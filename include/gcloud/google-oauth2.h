@@ -11,6 +11,8 @@ extern "C" {
 #include <json-c/json.h>
 #include <stdint.h>
 
+#include "json-web-token.h"
+
 /**
  * https://developers.google.com/identity/protocols/oauth2/web-server
  * Using OAuth 2.0 for Web Server Applications

@@ -339,7 +339,6 @@ int main(int argc, char **argv)
 		printf("cb_token: %ld\n token* %s\n", (long)cb_token, access_token);
 		sleep(1);
 	}
-
 	google_oauth2_context_free(gauth);
 	return 0;
 }

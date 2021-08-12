@@ -18,7 +18,7 @@ CFLAGS += -g -D_DEBUG
 OPTIMIZE = -O0
 endif
 
-LIBS += -ldb -ljson-c
+LIBS += -ldb -ljson-c -lcurl
 
 # sha256 / ripemd160
 CFLAGS += $(shell pkg-config --cflags gnutls)
@@ -44,9 +44,15 @@ UTILS_OBJ_DIR = obj/utils
 UTILS_SOURCES := $(wildcard $(UTILS_SRC_DIR)/*.c)
 UTILS_OBJECTS := $(UTILS_SOURCES:$(UTILS_SRC_DIR)/%.c=$(UTILS_OBJ_DIR)/%.o)
 
-all: do_init $(BIN_DIR)/$(TARGET)
+GCLOUD_UTILS_SRC_DIR = src/gcloud
+GCLOUD_UTILS_OBJ_DIR = obj/gcloud
+GCLOUD_UTILS_SOURCES := $(wildcard $(GCLOUD_UTILS_SRC_DIR)/*.c)
+GCLOUD_UTILS_OBJECTS := $(GCLOUD_UTILS_SOURCES:$(GCLOUD_UTILS_SRC_DIR)/%.c=$(GCLOUD_UTILS_OBJ_DIR)/%.o)
 
-$(BIN_DIR)/$(TARGET): $(OBJECTS) $(BASE_OBJECTS) $(UTILS_OBJECTS)
+all: do_init $(BIN_DIR)/$(TARGET)
+	echo "gcloud objs_dir: $(GCLOUD_UTILS_OBJ_DIR)"
+
+$(BIN_DIR)/$(TARGET): $(OBJECTS) $(BASE_OBJECTS) $(UTILS_OBJECTS) $(GCLOUD_UTILS_OBJECTS)
 	$(LINKER) $(OPTIMIZE) $(CFLAGS) -o $@ $^ $(LIBS)
 
 $(OBJECTS): $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(DEPS)
@@ -57,11 +63,15 @@ $(BASE_OBJECTS): $(BASE_OBJ_DIR)/%.o: $(BASE_SRC_DIR)/%.c $(DEPS)
 
 $(UTILS_OBJECTS): $(UTILS_OBJ_DIR)/%.o: $(UTILS_SRC_DIR)/%.c $(DEPS)
 	$(CC) -o $@ -c $< $(CFLAGS)
+	
+$(GCLOUD_UTILS_OBJECTS): $(GCLOUD_UTILS_OBJ_DIR)/%.o : $(GCLOUD_UTILS_SRC_DIR)/%.c $(DEPS)
+	echo "souce: $<"
+	$(CC) -o $@ -c $< $(CFLAGS)
 
 .PHONY: do_init clean
 do_init:
-	mkdir -p $(BIN_DIR) $(OBJ_DIR) $(BASE_OBJ_DIR) $(UTILS_OBJ_DIR) 
+	mkdir -p $(BIN_DIR) $(OBJ_DIR) $(BASE_OBJ_DIR) $(UTILS_OBJ_DIR) $(GCLOUD_UTILS_OBJ_DIR)
 	mkdir -p $(DATA_DIR) $(LOG_DIR)
 
 clean:
-	rm -f $(BIN_DIR)/$(TARGET) $(OBJECTS) $(UTILS_OBJECTS)
+	rm -f $(BIN_DIR)/$(TARGET) $(OBJECTS) $(UTILS_OBJECTS) $(GCLOUD_UTILS_OBJECTS)

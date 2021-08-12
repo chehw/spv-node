@@ -36,6 +36,8 @@
 #include <curl/curl.h>
 #include <time.h>
 
+#include <unistd.h>
+
 #include "json-web-token.h"
 #include "auto_buffer.h"
 #include "gcloud/google-oauth2.h"
@@ -263,6 +265,8 @@ static int google_oauth2_request_token(struct google_oauth2_context * gauth, con
 	
 	auto_buffer_cleanup(in_buf);
 	auto_buffer_cleanup(out_buf);
+	curl_easy_reset(curl);
+	
 	return rc;
 }
 
@@ -322,14 +326,20 @@ int main(int argc, char **argv)
 	
 	assert(0 == rc);
 
-	char * access_token = NULL;
-	ssize_t cb_token = gauth->get_access_token(gauth, &access_token, FALSE);
-	assert(cb_token >0);
+	char access_token_buffer[4096] = "";
+	char * access_token = access_token_buffer;
 	
-	printf("cb_token: %ld\n token* %s\n", (long)cb_token, access_token);
-	
-	free(access_token);
-	access_token = NULL;
+	for(int i = 0; i < 5; ++i) {
+		ssize_t cb_token = gauth->get_access_token(gauth, NULL, FALSE);
+		assert(cb_token < sizeof(access_token_buffer));
+		
+		cb_token =  gauth->get_access_token(gauth, &access_token, FALSE);
+		assert(cb_token >0);
+		
+		printf("cb_token: %ld\n token* %s\n", (long)cb_token, access_token);
+		sleep(1);
+	}
+
 	google_oauth2_context_free(gauth);
 	return 0;
 }

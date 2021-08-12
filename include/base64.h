@@ -1,5 +1,5 @@
-#ifndef _BASE64_H_
-#define _BASE64_H_
+#ifndef CHLIB_BASE64_H_
+#define CHLIB_BASE64_H_
 
 #include <stdio.h>
 #ifdef __cplusplus

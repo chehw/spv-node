@@ -117,6 +117,8 @@ static struct gcloud_storage_objects_interface s_objects_interface_v1 = {
 	.delete = gcloud_storage_objects_delete,
 };
 
+
+
 static ssize_t make_query_string(json_object * jparams, char * query_string, char * p_end)
 {
 	if(NULL == jparams) return 0;
@@ -157,6 +159,17 @@ static ssize_t make_query_string(json_object * jparams, char * query_string, cha
 	}
 	return length;
 }
+
+static inline void add_gauth_header(struct http_json_context * http, google_oauth2_context_t * gauth)
+{
+	assert(http && gauth);
+	char authorization[PATH_MAX] = GCLOUD_AUTH_TYPE" ";
+	char * access_token = authorization + sizeof(GCLOUD_AUTH_TYPE);
+	ssize_t cb_token = gauth->get_access_token(gauth, &access_token, 0);
+	assert( (cb_token > 0) && (cb_token < (sizeof(authorization) - sizeof(GCLOUD_AUTH_TYPE))) );
+	http->add_header(http, "Authorization", authorization, sizeof(GCLOUD_AUTH_TYPE) + cb_token);
+	return;
+}
 	
 
 static json_object * gcloud_storage_objects_list(struct gcloud_storage_context * gstorage, const char * prefix, json_object * jparams)
@@ -169,19 +182,14 @@ static json_object * gcloud_storage_objects_list(struct gcloud_storage_context *
 	ssize_t cb_query_string = 0;
 	
 	struct http_json_context * http = gstorage->http;
-	google_oauth2_context_t * gauth = gstorage->gauth;
 	http->clear_headers(http);
-
-	char authorization[PATH_MAX] = GCLOUD_AUTH_TYPE" ";
-	char * access_token = authorization + sizeof(GCLOUD_AUTH_TYPE);
-	ssize_t cb_token = gauth->get_access_token(gauth, &access_token, 0);
-	assert( (cb_token > 0) && (cb_token < (sizeof(authorization) - sizeof(GCLOUD_AUTH_TYPE))) );
-	http->add_header(http, "Authorization", authorization, sizeof(GCLOUD_AUTH_TYPE) + cb_token);
+	add_gauth_header(http, gstorage->gauth);
 	
 	if(jparams) {
 		*query_string++ = '?';
 		cb_query_string = make_query_string(jparams, query_string, url + sizeof(url));
 		assert(cb_query_string >= 0);
+		if(cb_query_string == 0) *--query_string ='\0';
 	}
 
 	return http->get(http, url);
@@ -189,12 +197,71 @@ static json_object * gcloud_storage_objects_list(struct gcloud_storage_context *
 
 static json_object * gcloud_storage_objects_get(struct gcloud_storage_context * gstorage, const char * object_name, json_object * jparams)
 {
-	return NULL;
+	static const char * end_point = "storage/v1/b";
+	assert(object_name);
+	
+	char * encoded_name = NULL;
+	encoded_name = gcloud_path_uriencode(object_name);
+	
+	char url[PATH_MAX] = "";
+	ssize_t cb_url = snprintf(url, sizeof(url), "%s/%s/%s/o/%s", gstorage->base_url, end_point, gstorage->bucket_name, encoded_name);
+	assert(cb_url > 0);
+	char * query_string = url + cb_url;
+	ssize_t cb_query_string = 0;
+	free(encoded_name);
+	
+	struct http_json_context * http = gstorage->http;
+	http->clear_headers(http);
+	add_gauth_header(http, gstorage->gauth);
+	
+	if(jparams) {
+		*query_string++ = '?';
+		cb_query_string = make_query_string(jparams,  query_string, url + sizeof(url));
+		assert(cb_query_string >= 0);
+		if(cb_query_string == 0) *--query_string ='\0';
+	}
+	
+	return http->get(http, url);
 }
 
 static ssize_t gcloud_storage_objects_get_media(struct gcloud_storage_context * gstorage, const char * object_name, json_object * jparams, void ** p_data)
 {
-	return 0;
+	static const char * end_point = "storage/v1/b";
+	assert(object_name && p_data);
+	
+	char * encoded_name = NULL;
+	encoded_name = gcloud_path_uriencode(object_name);
+	
+	char url[PATH_MAX] = "";
+	ssize_t cb_url = snprintf(url, sizeof(url), "%s/%s/%s/o/%s?alt=media", gstorage->base_url, end_point, gstorage->bucket_name, encoded_name);
+	assert(cb_url > 0);
+	char * query_string = url + cb_url;
+	ssize_t cb_query_string = 0;
+	free(encoded_name);
+	
+	struct http_json_context * http = gstorage->http;
+	struct json_response_context * response = http->response;
+	response->auto_parse = 0;
+	
+	http->clear_headers(http);
+	add_gauth_header(http, gstorage->gauth);
+	
+	if(jparams) {
+		*query_string++ = '?';
+		cb_query_string = make_query_string(jparams,  query_string, url + sizeof(url));
+		assert(cb_query_string >= 0);
+		if(cb_query_string == 0) *--query_string ='\0';
+	}
+	
+	http->get(http, url);
+	response->auto_parse = 1;
+	
+	if(response->err_code != 0 || response->response_code < 200 || response->response_code >= 300) return -1;
+	
+	ssize_t length = response->buf->length;
+	if(length > 0) length = auto_buffer_pop(response->buf, (unsigned char **)p_data, length);
+	
+	return length;
 }
 
 static json_object * gcloud_storage_objects_insert(
@@ -217,14 +284,8 @@ static json_object * gcloud_storage_objects_insert(
 	ssize_t cb_query_string = 0;
 	
 	struct http_json_context * http = gstorage->http;
-	google_oauth2_context_t * gauth = gstorage->gauth;
 	http->clear_headers(http);
-
-	char authorization[PATH_MAX] = GCLOUD_AUTH_TYPE" ";
-	char * access_token = authorization + sizeof(GCLOUD_AUTH_TYPE);
-	ssize_t cb_token = gauth->get_access_token(gauth, &access_token, 0);
-	assert( (cb_token > 0) && (cb_token < (sizeof(authorization) - sizeof(GCLOUD_AUTH_TYPE))) );
-	http->add_header(http, "Authorization", authorization, sizeof(GCLOUD_AUTH_TYPE) + cb_token);
+	add_gauth_header(http, gstorage->gauth);
 	http->add_header(http, "Content-Type", (char *)content_type, -1);
 	
 	char * encoded_name = NULL;
@@ -241,13 +302,38 @@ static json_object * gcloud_storage_objects_insert(
 		*query_string++ = '&';
 		cb_query_string = make_query_string(jparams,  query_string, url + sizeof(url));
 		assert(cb_query_string >= 0);
+		if(cb_query_string == 0) *--query_string ='\0';
 	}
 	
 	return http->post(http, url, data, cb_data);
 }
+
 static json_object * gcloud_storage_objects_delete(struct gcloud_storage_context * gstorage, const char * object_name, json_object * jparams)
 {
-	return NULL;
+	static const char * end_point = "storage/v1/b";
+	assert(object_name);
+	
+	char * encoded_name = NULL;
+	encoded_name = gcloud_path_uriencode(object_name);
+	
+	char url[PATH_MAX] = "";
+	ssize_t cb_url = snprintf(url, sizeof(url), "%s/%s/%s/o/%s", gstorage->base_url, end_point, gstorage->bucket_name, encoded_name);
+	assert(cb_url > 0);
+	char * query_string = url + cb_url;
+	ssize_t cb_query_string = 0;
+	free(encoded_name);
+	
+	struct http_json_context * http = gstorage->http;
+	http->clear_headers(http);
+	add_gauth_header(http, gstorage->gauth);
+	
+	if(jparams) {
+		*query_string++ = '?';
+		cb_query_string = make_query_string(jparams,  query_string, url + sizeof(url));
+		assert(cb_query_string >= 0);
+		if(cb_query_string == 0) *--query_string ='\0';
+	}
+	return http->delete(http, url, NULL, 0);
 }
 
 
@@ -330,10 +416,41 @@ int main(int argc, char **argv)
 	jresponse = gstorage->objects->insert(gstorage, 
 		object_name, NULL, 
 		test_data, sizeof(test_data), NULL);
-	dump_json_response("list objects", jresponse);
+	dump_json_response("upload objects", jresponse);
 	json_object_put(jparams);
 	jparams = NULL;
 	
+	// test3. delete files
+	object_name = "test_data/02.dat";
+	jresponse = gstorage->objects->delete(gstorage, object_name, NULL);
+	
+	// If successful, this method returns an empty response body.
+	if(jresponse) {
+		dump_json_response("delete objects failed", jresponse);
+	}else {
+		fprintf(stderr, "delete objects OK.\n");
+	}
+	json_object_put(jparams);
+	jparams = NULL;
+	
+	// test4. get files (json-format)
+	object_name = "test_data/01.dat";
+	jresponse = gstorage->objects->get(gstorage, object_name, NULL);
+	dump_json_response("get json objects", jresponse);
+	json_object_put(jparams);
+	jparams = NULL;
+	
+	// test4. get media-files (raw data)
+	object_name = "test_data/01.dat";
+	void * data = NULL;
+	ssize_t cb_data = 0;
+	cb_data = gstorage->objects->get_media(gstorage, object_name, NULL, &data);
+	assert(cb_data >= 0);
+	
+	if(cb_data > 0) {
+		fprintf(stderr, "data file: (length=%ld), data='%.*s'\n", (long)cb_data, (int)cb_data, (char *)data);
+	}
+	free(data); data = NULL;
 	
 	gcloud_storage_context_cleanup(gstorage);
 	free(gstorage);

@@ -103,6 +103,7 @@ size_t auto_buffer_pop(auto_buffer_t * buf, unsigned char ** p_data, size_t data
 	assert(buf);
 	if(NULL == p_data) return buf->length;	// return needed size
 	
+	if(data_size == 0) data_size = buf->length;
 	size_t length = data_size;
 	if(length > buf->length) length = buf->length;
 	

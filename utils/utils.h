@@ -37,18 +37,22 @@ typedef _Bool boolean;
 #define json_get_value(jobj, type, key) ({								\
 		type value = (type)0;											\
 		json_object * jvalue = NULL;									\
-		json_bool ok = json_object_object_get_ex(jobj, #key, &jvalue);		\
-		if(ok) { value = (type)json_object_get_##type(jvalue); }	\
+		json_bool ok = json_object_object_get_ex(jobj, #key, &jvalue);	\
+		if(ok) { value = (type)json_object_get_##type(jvalue); }		\
 		value;															\
 	})
 
-#define json_get_value_default(jobj, type, key, defval)({								\
-		type value = (type)defval;											\
+#define json_get_value_default(jobj, type, key, defval)({				\
+		type value = (type)defval;										\
 		json_object * jvalue = NULL;									\
-		json_bool ok = json_object_object_get_ex(jobj, #key, &jvalue);		\
-		if(ok) { value = (type)json_object_get_##type(jvalue); }	\
+		json_bool ok = json_object_object_get_ex(jobj, #key, &jvalue);	\
+		if(ok) { value = (type)json_object_get_##type(jvalue); }		\
 		value;															\
 	})
+	
+#define json_set_value(jobj, type, key, value) do { 						\
+		json_object_object_add(jobj, #key, json_object_new_##type(value));	\
+	} while(0)
 
 #ifndef debug_printf
 #ifdef _DEBUG

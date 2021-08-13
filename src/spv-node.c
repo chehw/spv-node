@@ -153,27 +153,6 @@ int main(int argc, char **argv)
 /**************************************************
  * message handlers
 **************************************************/
-static int send_message_verack(spv_node_context_t * spv, const struct bitcoin_message * in_msg)
-{
-	static struct bitcoin_message_header hdr[1] = {{
-		.magic = BITCOIN_MESSAGE_MAGIC_MAINNET,
-		.command = "verack",
-		.length = 0,
-		.checksum = 0xe2e0f65d
-	}};
-	hdr->magic = in_msg->msg_data->magic;
-	
-	auto_buffer_push(spv->out_buf, hdr, sizeof(*hdr));
-	return 0;
-}
-
-static int send_message_pong(spv_node_context_t * spv, const struct bitcoin_message * in_msg)
-{
-	const struct bitcoin_message_header * msg_data = in_msg->msg_data;
-	auto_buffer_push(spv->out_buf, msg_data, sizeof(*msg_data) + msg_data->length);
-	
-	return 0;
-}
 
 int on_message_handler(spv_node_context_t *spv, const struct bitcoin_message * in_msg)
 {
@@ -187,18 +166,6 @@ int on_message_handler(spv_node_context_t *spv, const struct bitcoin_message * i
 	spv_node_message_callback_fn msg_callback = spv->msg_callbacks[in_msg->msg_type];
 	if(msg_callback) return msg_callback(spv, in_msg);
 	
-	switch(in_msg->msg_type)
-	{
-	case bitcoin_message_type_version:
-		bitcoin_message_version_dump(in_msg->priv);
-		return send_message_verack(spv, in_msg);
-	case bitcoin_message_type_verack:
-		return 0;
-	case bitcoin_message_type_ping:
-		return send_message_pong(spv, in_msg);
-	default:
-		break;
-	}
 	return rc;
 }
 
@@ -392,12 +359,15 @@ spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user
 	auto_buffer_init(spv->in_buf, 0);
 	auto_buffer_init(spv->out_buf, 0);
 	
+	avl_tree_t * tree = avl_tree_init(spv->addrs_list, spv);
+	tree->on_free_data = free;
+	
 	// set default msg_handler_callbacks
 	memcpy(spv->msg_callbacks, s_spv_node_callbacks, sizeof(spv->msg_callbacks));
 	
 	// disable some handlers and use local implementation
-	spv->msg_callbacks[bitcoin_message_type_version] = NULL;
-	spv->msg_callbacks[bitcoin_message_type_ping] = NULL;
+	//~ spv->msg_callbacks[bitcoin_message_type_version] = NULL;
+	//~ spv->msg_callbacks[bitcoin_message_type_ping] = NULL;
 	
 	return spv;
 }
@@ -412,6 +382,8 @@ void spv_node_context_cleanup(spv_node_context_t * spv)
 		json_object_put(spv->jconfig);
 		spv->jconfig = NULL;
 	}
+	
+	avl_tree_cleanup(spv->addrs_list);
 	
 	pthread_mutex_destroy(&spv->mutex);
 	return;

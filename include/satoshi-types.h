@@ -427,6 +427,7 @@ typedef struct bitcoin_message
 bitcoin_message_t * bitcoin_message_init(bitcoin_message_t * msg, const struct bitcoin_message_header * hdr, void * user_data);
 void bitcoin_message_cleanup(bitcoin_message_t * msg);
 int bitcoin_message_parse(bitcoin_message_t * msg, const struct bitcoin_message_header * hdr, const void * payload, size_t length);
+void bitcoin_message_clear(bitcoin_message_t * msg);
 
 struct bitcoin_network_address_legacy
 {

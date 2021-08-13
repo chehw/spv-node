@@ -16,6 +16,7 @@ extern "C" {
 #include "satoshi-types.h"
 #include "chains.h"
 #include "auto_buffer.h"
+#include "avl_tree.h"
 
 typedef struct spv_node_context spv_node_context_t;
 typedef int (* spv_node_message_callback_fn)(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
@@ -49,6 +50,10 @@ struct spv_node_context
 	char ** argv;
 	json_object * jconfig;
 	int max_retries;
+	
+	int send_headers_flag;
+	avl_tree_t addrs_list[1];
+	
 };
 spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user_data);
 void spv_node_context_cleanup(spv_node_context_t * spv);

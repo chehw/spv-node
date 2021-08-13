@@ -31,7 +31,11 @@
 #include <string.h>
 #include <assert.h>
 
+#include <stdint.h>
+
+#include "utils.h"
 #include "spv-node.h"
+#include "avl_tree.h"
 
 static int on_message_unknown(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_version(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
@@ -100,155 +104,267 @@ spv_node_message_callback_fn s_spv_node_callbacks[bitcoin_message_types_count] =
 	[bitcoin_message_type_blocktxn] = on_message_blocktxn,
 };
 
+static int send_message_verack(spv_node_context_t * spv, const struct bitcoin_message * in_msg)
+{
+	static struct bitcoin_message_header hdr[1] = {{
+		.magic = BITCOIN_MESSAGE_MAGIC_MAINNET,
+		.command = "verack",
+		.length = 0,
+		.checksum = 0xe2e0f65d
+	}};
+	hdr->magic = in_msg->msg_data->magic;
+	
+	auto_buffer_push(spv->out_buf, hdr, sizeof(*hdr));
+	return 0;
+}
+
+static int send_message_pong(spv_node_context_t * spv, const struct bitcoin_message * in_msg)
+{
+	const struct bitcoin_message_header * msg_data = in_msg->msg_data;
+	assert(msg_data->length == sizeof(uint64_t));
+	
+	struct 
+	{
+		struct bitcoin_message_header hdr;
+		uint64_t nonce;
+	} msg_pong = {
+		.hdr.magic = msg_data->magic,
+		.hdr.command = "pong",
+		.hdr.length = sizeof(uint64_t),
+		.hdr.checksum = msg_data->checksum,
+		.nonce = *(uint64_t *)msg_data->payload
+	};
+	
+	auto_buffer_push(spv->out_buf, &msg_pong, sizeof(msg_pong));
+	return 0;
+}
 
 static int on_message_unknown(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return -1;
 }
 
 static int on_message_version(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
-	return 0;
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
+	bitcoin_message_version_dump(in_msg->priv);
+	return send_message_verack(spv, in_msg);
 }
 
 static int on_message_verack(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
+}
+
+
+static int network_address_compare(const void * a, const void * b)
+{
+	const struct bitcoin_network_address * addr1 = a;
+	const struct bitcoin_network_address * addr2 = b;
+	return memcmp(addr1->ip, addr2->ip, sizeof(addr1->ip) + sizeof(addr1->port));
 }
 
 static int on_message_addr(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	assert(spv && in_msg);
+	
+	struct bitcoin_message_addr * msg_addr = in_msg->priv;
+	assert(msg_addr);
+	debug_printf("%s(num_addrs=%ld)", __FUNCTION__, (long)msg_addr->count);
+	
+	avl_tree_t * addrs_list = spv->addrs_list;
+	for(int i = 0; i < msg_addr->count; ++i) 
+	{
+		struct bitcoin_network_address * addr = calloc(1, sizeof(*addr));
+		assert(addr);
+		memcpy(addr, &msg_addr->addrs[i], sizeof(*addr));
+		
+		fprintf(stderr, "[addrs:%.4d]: ", i);
+		dump2(stderr, addr, sizeof(*addr));
+		fprintf(stderr, "\n"); 
+
+		void * p_node = avl_tree_add(addrs_list, addr, network_address_compare);
+		assert(p_node);
+		
+		struct bitcoin_network_address * item = *(void **)p_node;
+		if(item != addr) { // update existing item
+			item->time = addr->time;
+			item->services = addr->services;
+			free(addr);
+		}
+	}
+	
+	debug_printf("saved address count: %ld", (long)addrs_list->count);
 	return 0;
 }
 
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_getdata(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 static int on_message_notefound(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_getblocks(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 static int on_message_getheaders(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_tx(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_block(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 static int on_message_headers(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_getaddr(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_mempool(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_checkorder(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	fprintf(stderr, "[WARNING]: %s(): %s\n", 
+		__FUNCTION__,
+		"This message was used for IP Transactions. As IP transactions have been deprecated, it is no longer used."
+	);
 	return 0;
 }
 
 static int on_message_submitorder(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	fprintf(stderr, "[WARNING]: %s(): %s\n", 
+		__FUNCTION__,
+		"This message was used for IP Transactions. As IP transactions have been deprecated, it is no longer used."
+	);
 	return 0;
 }
 
 static int on_message_reply(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	fprintf(stderr, "[WARNING]: %s(): %s\n", 
+		__FUNCTION__,
+		"This message was used for IP Transactions. As IP transactions have been deprecated, it is no longer used."
+	);
 	return 0;
 }
 
 static int on_message_ping(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
-	return 0;
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
+	return send_message_pong(spv, in_msg);
 }
  
 static int on_message_pong(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_reject(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_filterload(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_filteradd(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_filterclear(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_merkle_block(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_alert(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_sendheaders(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
+	spv->send_headers_flag = 1;
 	return 0;
 }
 
 static int on_message_feefilter(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_sendcmpct(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_cmpctblock(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_getblocktxn(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
 
 static int on_message_blocktxn(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
+	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }

@@ -1,6 +1,5 @@
 {
 	"fullnode": "node1.cloud.c-apps.net",
-	//~ "fullnode": "localhost",
 	"port": "8333",
 	"network_type": "mainnet",
 }

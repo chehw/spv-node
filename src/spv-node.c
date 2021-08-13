@@ -32,6 +32,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <getopt.h>
 
 #include <unistd.h>
 #include <poll.h>
@@ -50,6 +51,7 @@
 #include "chains.h"
 #include "utils.h"
 #include "spv-node.h"
+#include "bitcoin.h"
 
 extern spv_node_message_callback_fn s_spv_node_callbacks[/*bitcoin_message_types_count*/];
 
@@ -63,96 +65,88 @@ void on_signal(int sig)
 
 static int on_read(struct pollfd * pfd, void * user_data);
 static int on_write(struct pollfd * pfd, void * user_data);
-static int add_message_version(spv_node_context_t * spv, int protocol_version);
+static json_object * generate_default_config(void)
+{
+	json_object * jconfig = NULL;
+	jconfig = json_object_new_object();
+	assert(jconfig);
+	json_set_value(jconfig, string, fullnode, "node1.cloud.c-apps.net");
+	json_set_value(jconfig, string, port, "8333");
+	json_set_value(jconfig, string, network_type, "mainnet");
+	return jconfig;
+}
+
+static int spv_node_parse_args(spv_node_context_t * spv, int argc, char ** argv)
+{
+	static struct option options[] = {
+		{ "conf", required_argument, 0, 'c' },
+		{ "fullnode", required_argument, 0, 'n' },
+		{ "port", required_argument, 0, 'p'},
+		{ "network_type", required_argument, 0, 't' },
+		{ "help", no_argument, 0, 'h' }
+	};
+	
+	const char * conf_file = NULL;
+	const char * fullnode = NULL;
+	const char * port = NULL;
+	const char * network_type = NULL;
+	while(1) {
+		int option_index = 0;
+		int c = getopt_long(argc, argv, "c:n:p:t:h", options, &option_index);
+		if(c == -1) break;
+		
+		switch(c) {
+		case 'c': conf_file = optarg; break;
+		case 'n': fullnode = optarg; break;
+		case 'p': port = optarg; break;
+		case 't': network_type = optarg; break;
+		case 'h':
+			printf("Usuage: %s [cnpth]\n", argv[0]);
+			exit(0);
+		default:
+			continue;
+		}
+	}
+	
+	if(optind < argc) {
+		// save unparsed args
+		spv->argc = argc - optind;
+		spv->argv = &argv[optind];
+	}
+	
+	if(fullnode) spv->host = fullnode;
+	if(port) spv->port = port;
+	
+	json_object * jconfig = NULL;
+	if(conf_file) jconfig =json_object_from_file(conf_file);
+	if(NULL == jconfig) jconfig = generate_default_config();
+
+	if(fullnode) json_set_value(jconfig, string, fullnode, fullnode);
+	if(port) json_set_value(jconfig, string, port, port);
+	if(network_type) json_set_value(jconfig, string, network_type, network_type);
+	
+	return spv_node_load_config(spv, jconfig);
+}
+
 int main(int argc, char **argv)
 {
 	signal(SIGINT, on_signal);
 	signal(SIGUSR1, on_signal);
 	
 	int rc = 0;
-	const char * default_fullnode = "localhost"; // <<= replace with the fullnode name or ip
-	const char * port = "8333";
-	
-	if(argc > 1) default_fullnode = argv[1];
-	if(argc > 2) port = argv[2];
-	
-	sigset_t sigs;
-	sigemptyset(&sigs);
-	sigaddset(&sigs, SIGPIPE);
-	sigaddset(&sigs, SIGHUP);
-	sigaddset(&sigs, SIGINT);
-
-	const struct timespec timeout[1] = {{
-		.tv_sec = 0,
-		.tv_nsec = 100 * 1000000,
-	}};
-	
-	spv_node_context_t * spv = spv_node_context_init(NULL, 0, NULL);
+	spv_node_context_t * spv = spv_node_context_init(NULL, NULL);
 	assert(spv);
 	
-	struct pollfd *pfd = spv->pfd;
-	memset(pfd, 0, sizeof(*pfd));
-	pfd->events = POLLIN | POLLHUP | POLLRDHUP;
+	rc = spv_node_parse_args(spv, argc, argv);
+	assert(0 == rc);
+	//~ rc = spv_node_load_config(spv, spv->conf_file);
+	//~ assert(0 == rc);
 	
-	spv->host = default_fullnode;
-	spv->port = port;
-
-	#define MAX_RETRIES (5)
-	for(int retries = 0; !g_quit && (retries < MAX_RETRIES); ++retries) 
-	{
-		int fd = connect2(default_fullnode, port, spv->addr, &spv->addr_len);
-		if(fd < 0) {
-			fprintf(stderr, "[WARNING]: retries: %d, max_retries: %d\n", retries + 1, MAX_RETRIES);
-			sleep(1);
-			continue;
-		}
-		pfd->fd = fd;
-		spv->fd = fd;
-		
-		auto_buffer_cleanup(spv->in_buf);
-		auto_buffer_cleanup(spv->out_buf);
-		add_message_version(spv, 0);
-		pfd->events |= POLLOUT;
-		
-		while(!g_quit) {
-			rc = 0;
-			if(spv->out_buf->length > 0) pfd->events |= POLLOUT;
-			int n = ppoll(pfd, 1, timeout, &sigs);
-			if(n == -1) {
-				rc = errno;
-				break;
-			}
-			if(n == 0) // timeout
-			{
-				if(g_quit || pfd[0].fd < 0) break;
-				continue;
-			}
-			
-			if(pfd[0].revents & POLLIN) {
-				rc = on_read(pfd, spv);
-			}
-			if(0 == rc && (pfd[0].revents & POLLOUT)) {
-				rc = on_write(pfd, spv);
-			}
-			printf("rc = %d, revents = %.8x\n", rc, pfd[0].revents);
-			
-			if(rc < 0 
-				|| (pfd[0].revents & POLLERR) 
-				|| (pfd[0].revents & POLLHUP)
-				|| (pfd[0].revents & POLLRDHUP)
-				|| 0)
-			{
-				fprintf(stderr, "error: rc = %d, revents = 0x%.8x\n", rc, (unsigned int)pfd[0].revents);
-				if(pfd[0].fd >= 0) {
-					close(pfd[0].fd);
-					pfd[0].fd = -1;
-				}
-				fd = -1;
-				spv->fd = -1;
-			}
-		}
+	rc = spv_node_run(spv);
 	
-	}
+	spv_node_context_cleanup(spv);
+	free(spv);
+	
 	return rc;
 }
 
@@ -307,10 +301,6 @@ static int on_write(struct pollfd * pfd, void * user_data)
 /**************************************************
  * spv context
 **************************************************/
-static spv_node_context_t g_spv_node[1] = {{
-	.magic = BITCOIN_MESSAGE_MAGIC_MAINNET,
-}};
-
 static int add_message_version(spv_node_context_t * spv, int protocol_version)
 {
 	fprintf(stderr, "==== %s() ====\n", __FUNCTION__);
@@ -389,14 +379,16 @@ static int add_message_version(spv_node_context_t * spv, int protocol_version)
 	return 0;
 }
 
-spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, uint32_t magic, void * user_data)
+spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user_data)
 {
-	if(NULL == spv) spv = g_spv_node;
-	if(magic) spv->magic = magic;
+	if(NULL == spv) spv = calloc(1, sizeof(*spv));
+	else memset(spv, 0, sizeof(*spv));
 	
+	assert(spv);
 	spv->user_data = user_data;
-	pthread_mutex_init(&spv->mutex, NULL);
+	spv->max_retries = 5;
 	
+	pthread_mutex_init(&spv->mutex, NULL);
 	auto_buffer_init(spv->in_buf, 0);
 	auto_buffer_init(spv->out_buf, 0);
 	
@@ -416,5 +408,131 @@ void spv_node_context_cleanup(spv_node_context_t * spv)
 	auto_buffer_cleanup(spv->in_buf);
 	auto_buffer_cleanup(spv->out_buf);
 	
+	if(spv->jconfig) {
+		json_object_put(spv->jconfig);
+		spv->jconfig = NULL;
+	}
+	
 	pthread_mutex_destroy(&spv->mutex);
+	return;
+}
+
+int spv_node_load_config(spv_node_context_t * spv, json_object * jconfig)
+{
+	if(NULL == jconfig) jconfig = generate_default_config();
+	assert(jconfig);
+	
+	spv->jconfig = jconfig;
+	spv->host = json_get_value(jconfig, string, fullnode);
+	spv->port = json_get_value(jconfig, string, port);
+	
+	const char * network_type = json_get_value(jconfig, string, network_type);
+	if(NULL == network_type) network_type = "mainnet";
+	
+	int max_retries = json_get_value(jconfig, int, max_retries);
+	if(max_retries > 0) spv->max_retries = max_retries;
+	
+	enum bitcoin_network_type type = bitcoin_network_type_from_string(network_type);
+	assert(type != -1);
+	
+	const char * default_port = "8333";
+	switch(type)
+	{
+	case bitcoin_network_type_default:
+	case bitcoin_network_type_mainnet:
+		spv->magic = BITCOIN_MESSAGE_MAGIC_MAINNET;
+		break;
+	case bitcoin_network_type_testnet:
+		spv->magic = BITCOIN_MESSAGE_MAGIC_TESTNET3;
+		default_port = "18333";
+		break;
+	case bitcoin_network_type_regtest:
+		spv->magic = BITCOIN_MESSAGE_MAGIC_REGTEST;
+		default_port = "18444";
+		break;
+	default:
+		return -1;
+	}
+	if(NULL == spv->port) spv->port = default_port;
+
+	return 0;
+}
+
+int spv_node_run(spv_node_context_t * spv)
+{
+	assert(spv && spv->host && spv->port);
+	int rc = 0;
+	
+	sigset_t sigs;
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGPIPE);
+	sigaddset(&sigs, SIGHUP);
+	sigaddset(&sigs, SIGINT);
+
+	const struct timespec timeout[1] = {{
+		.tv_sec = 0,
+		.tv_nsec = 100 * 1000000,
+	}};
+	
+	struct pollfd *pfd = spv->pfd;
+	memset(pfd, 0, sizeof(*pfd));
+	pfd->events = POLLIN | POLLHUP | POLLRDHUP;
+
+	for(int retries = 0; !g_quit && (retries < spv->max_retries); ++retries) 
+	{
+		int fd = connect2(spv->host, spv->port, spv->addr, &spv->addr_len);
+		if(fd < 0) {
+			fprintf(stderr, "[WARNING]: retries: %d, max_retries: %d\n", retries + 1, spv->max_retries);
+			sleep(1);
+			continue;
+		}
+		pfd->fd = fd;
+		spv->fd = fd;
+		
+		auto_buffer_cleanup(spv->in_buf);
+		auto_buffer_cleanup(spv->out_buf);
+		add_message_version(spv, 0);
+		pfd->events |= POLLOUT;
+		
+		while(!g_quit) {
+			rc = 0;
+			if(spv->out_buf->length > 0) pfd->events |= POLLOUT;
+			int n = ppoll(pfd, 1, timeout, &sigs);
+			if(n == -1) {
+				rc = errno;
+				break;
+			}
+			if(n == 0) // timeout
+			{
+				if(g_quit || pfd[0].fd < 0) break;
+				continue;
+			}
+			
+			if(pfd[0].revents & POLLIN) {
+				rc = on_read(pfd, spv);
+			}
+			if(0 == rc && (pfd[0].revents & POLLOUT)) {
+				rc = on_write(pfd, spv);
+			}
+			printf("rc = %d, revents = %.8x\n", rc, pfd[0].revents);
+			
+			if(rc < 0 
+				|| (pfd[0].revents & POLLERR) 
+				|| (pfd[0].revents & POLLHUP)
+				|| (pfd[0].revents & POLLRDHUP)
+				|| 0)
+			{
+				fprintf(stderr, "error: rc = %d, revents = 0x%.8x\n", rc, (unsigned int)pfd[0].revents);
+				if(pfd[0].fd >= 0) {
+					close(pfd[0].fd);
+					pfd[0].fd = -1;
+				}
+				fd = -1;
+				spv->fd = -1;
+			}
+		}
+	
+	}
+	
+	return 0;
 }

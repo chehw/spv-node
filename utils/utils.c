@@ -284,5 +284,6 @@ int connect2(const char * host, const char * port, struct sockaddr_storage * p_a
 		memcpy(p_addr, pai->ai_addr, pai->ai_addrlen);
 		*p_addr_len = pai->ai_addrlen;
 	}
+	freeaddrinfo(serv_info);
 	return fd;
 }

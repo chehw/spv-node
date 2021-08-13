@@ -11,6 +11,7 @@ extern "C" {
 #include <poll.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <json-c/json.h>
 
 #include "satoshi-types.h"
 #include "chains.h"
@@ -43,11 +44,19 @@ struct spv_node_context
 	auto_buffer_t out_buf[1];
 	
 	spv_node_message_callback_fn msg_callbacks[bitcoin_message_types_count];
+	
+	int argc;
+	char ** argv;
+	json_object * jconfig;
+	int max_retries;
 };
-spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, uint32_t magic, void * user_data);
+spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user_data);
 void spv_node_context_cleanup(spv_node_context_t * spv);
 #define spv_node_lock(spv) 		pthread_mutex_lock(&spv->mutex)
 #define spv_node_unlock(spv) 	pthread_mutex_unlock(&spv->mutex)
+
+int spv_node_load_config(spv_node_context_t * spv, json_object * jconfig);
+int spv_node_run(spv_node_context_t * spv);
 
 #ifdef __cplusplus
 }

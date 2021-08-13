@@ -8,6 +8,8 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 ssize_t bin2hex(const void * data, size_t length, char ** p_hex);
 ssize_t hex2bin(const char * hex, size_t length, void ** p_data);
@@ -21,6 +23,8 @@ void hash160(const void * data, size_t length, uint8_t hash[static 20]);
 int make_nonblock(int fd);
 void global_lock();
 void global_unlock();
+
+int connect2(const char * host, const char * port, struct sockaddr_storage * p_addr, socklen_t * p_addr_len);
 
 typedef struct app_timer
 {

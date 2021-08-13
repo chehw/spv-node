@@ -218,3 +218,71 @@ void hash160(const void * data, size_t length, uint8_t hash[static 20])
 	ripemd160_hash(temp_hash, 32, hash);
 	return;
 }
+
+
+#include <sys/socket.h>
+#include <netdb.h>
+int connect2(const char * host, const char * port, struct sockaddr_storage * p_addr, socklen_t * p_addr_len)
+{
+	struct addrinfo hints, *serv_info = NULL, *pai;
+	int rc = 0;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_flags = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = 0;
+	
+	rc = getaddrinfo(host, port, &hints, &serv_info);
+	if(rc) {
+		fprintf(stderr, "[ERROR]: getaddrinfo(%s:%p): %s\n", 
+			host, port, 
+			gai_strerror(rc));
+		exit(1);
+	}
+	
+	int fd = -1;
+	char hbuf[NI_MAXHOST] = "";
+	char sbuf[NI_MAXSERV] = "";
+	
+	for(pai = serv_info; pai; pai = pai->ai_next) {
+		fd = socket(pai->ai_family, pai->ai_socktype, pai->ai_protocol);
+		if(fd < 0) continue;
+		
+		rc = getnameinfo(pai->ai_addr, pai->ai_addrlen, 
+			hbuf, sizeof(hbuf),
+			sbuf, sizeof(sbuf),
+			NI_NUMERICHOST | NI_NUMERICSERV);
+		if(rc) {
+			perror("getnameinfo()");
+			close(fd);
+			fd = -1;
+			continue;
+		}
+		
+		fprintf(stderr, "[INFO]: connect to %s:%s ...\n", hbuf, sbuf);
+		rc = connect(fd, pai->ai_addr, pai->ai_addrlen);
+		if(rc) {
+			fprintf(stderr, "    ==> [FAILED]\n");
+			close(fd);
+			fd = -1;
+			continue;
+		}
+		fprintf(stderr, "    ==> [OK]\n");
+		break;
+	}
+	
+	if(NULL == pai) {
+		fprintf(stderr, "[ERROR]: connect to [%s:%s] failed.\n", host, port);
+		freeaddrinfo(serv_info);
+		if(fd >= 0) close(fd);
+		return -1;
+	}
+	
+	rc = make_nonblock(fd);
+	assert(0 == rc);
+	
+	if(p_addr) {
+		memcpy(p_addr, pai->ai_addr, pai->ai_addrlen);
+		*p_addr_len = pai->ai_addrlen;
+	}
+	return fd;
+}

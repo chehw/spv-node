@@ -433,14 +433,14 @@ int main(int argc, char **argv)
 	json_object_put(jparams);
 	jparams = NULL;
 	
-	// test4. get files (json-format)
+	// test 4-1. get files (json-format)
 	object_name = "test_data/01.dat";
 	jresponse = gstorage->objects->get(gstorage, object_name, NULL);
 	dump_json_response("get json objects", jresponse);
 	json_object_put(jparams);
 	jparams = NULL;
 	
-	// test4. get media-files (raw data)
+	// test 4-2. get media-files (raw data)
 	object_name = "test_data/01.dat";
 	void * data = NULL;
 	ssize_t cb_data = 0;

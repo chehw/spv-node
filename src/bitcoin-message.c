@@ -30,8 +30,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
+#include <stdint.h>
+#include <inttypes.h>
 #include <endian.h>
+#include <arpa/inet.h>
+
 #include "satoshi-types.h"
 #include "utils.h"
 
@@ -214,6 +217,29 @@ void bitcoin_message_cleanup(bitcoin_message_t * msg)
 ssize_t bitcoin_message_serialize(const struct bitcoin_message * msg, unsigned char ** p_data)
 {
 	return 0;
+}
+
+void bitcoin_message_version_dump(const struct bitcoin_message_version * msg)
+{
+#ifdef _DEBUG
+	printf("==== %s() ====\n", __FUNCTION__);
+	printf("version: %d(0x%.8x)\n", msg->version, msg->version);
+	printf("service: %"PRIx64"\n", msg->services);
+	printf("timestamp: %" PRIi64"\n", msg->timestamp);
+	char addr_buf[INET6_ADDRSTRLEN + 1] = "";
+	const char * addr = inet_ntop(AF_INET6, msg->addr_recv.ip, addr_buf, sizeof(msg->addr_recv.ip));
+	printf("addr_recv: %s:%hu\n", addr, msg->addr_recv.port);
+	
+	addr = inet_ntop(AF_INET6, msg->addr_from.ip, addr_buf, sizeof(msg->addr_from.ip));
+	printf("addr_from: %s:%hu\n", addr, msg->addr_from.port);
+	printf("nonce: %ld(%"PRIx64")\n", msg->nonce, msg->nonce);
+	
+	int cb = varstr_length(msg->user_agent);
+	printf("user_agent(cb=%d): %*s\n", cb, cb, varstr_getdata_ptr(msg->user_agent));
+	printf("start_height: %d\n", msg->start_height);
+	printf("relay: %d\n", msg->relay);
+#endif
+	return;
 }
 
 

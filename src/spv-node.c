@@ -41,111 +41,18 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-
+#include <pthread.h>
+#include <poll.h>
+#include <signal.h>
+#include <errno.h>
 
 #include "auto_buffer.h"
 #include "chains.h"
 #include "utils.h"
+#include "spv-node.h"
 
-#include <pthread.h>
-typedef struct spv_node_context
-{
-	void * priv;
-	void * user_data;
-	
-	const char * host;
-	const char * port;
-	
-	struct sockaddr_storage addr[1];
-	socklen_t addr_len;
-	
-	pthread_mutex_t mutex;
-	pthread_t th;
+extern spv_node_message_callback_fn s_spv_node_callbacks[/*bitcoin_message_types_count*/];
 
-	uint32_t magic;
-	blockchain_t chain[1];
-	
-	struct pollfd pfd[1];
-	int fd;
-	
-	auto_buffer_t in_buf[1];
-	auto_buffer_t out_buf[1];
-	
-}spv_node_context_t;
-spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, uint32_t magic, void * user_data);
-void spv_node_context_cleanup(spv_node_context_t * spv);
-#define spv_node_lock(spv) 		pthread_mutex_lock(&spv->mutex)
-#define spv_node_unlock(spv) 	pthread_mutex_unlock(&spv->mutex)
-
-
-#include <poll.h>
-static int connect2(const char * host, const char * port, struct sockaddr_storage * p_addr, socklen_t * p_addr_len)
-{
-	struct addrinfo hints, *serv_info = NULL, *pai;
-	int rc = 0;
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_flags = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = 0;
-	
-	rc = getaddrinfo(host, port, &hints, &serv_info);
-	if(rc) {
-		fprintf(stderr, "[ERROR]: getaddrinfo(%s:%p): %s\n", 
-			host, port, 
-			gai_strerror(rc));
-		exit(1);
-	}
-	
-	int fd = -1;
-	char hbuf[NI_MAXHOST] = "";
-	char sbuf[NI_MAXSERV] = "";
-	
-	for(pai = serv_info; pai; pai = pai->ai_next) {
-		fd = socket(pai->ai_family, pai->ai_socktype, pai->ai_protocol);
-		if(fd < 0) continue;
-		
-		rc = getnameinfo(pai->ai_addr, pai->ai_addrlen, 
-			hbuf, sizeof(hbuf),
-			sbuf, sizeof(sbuf),
-			NI_NUMERICHOST | NI_NUMERICSERV);
-		if(rc) {
-			perror("getnameinfo()");
-			close(fd);
-			fd = -1;
-			continue;
-		}
-		
-		fprintf(stderr, "[INFO]: connect to %s:%s ...\n", hbuf, sbuf);
-		rc = connect(fd, pai->ai_addr, pai->ai_addrlen);
-		if(rc) {
-			fprintf(stderr, "    ==> [FAILED]\n");
-			close(fd);
-			fd = -1;
-			continue;
-		}
-		fprintf(stderr, "    ==> [OK]\n");
-		break;
-	}
-	
-	if(NULL == pai) {
-		fprintf(stderr, "[ERROR]: connect to [%s:%s] failed.\n", host, port);
-		freeaddrinfo(serv_info);
-		if(fd >= 0) close(fd);
-		return -1;
-	}
-	
-	rc = make_nonblock(fd);
-	assert(0 == rc);
-	
-	if(p_addr) {
-		memcpy(p_addr, pai->ai_addr, pai->ai_addrlen);
-		*p_addr_len = pai->ai_addrlen;
-	}
-	return fd;
-}
-
-#include <signal.h>
-#include <errno.h>
 volatile int g_quit = 0;
 void on_signal(int sig)
 {
@@ -156,7 +63,6 @@ void on_signal(int sig)
 
 static int on_read(struct pollfd * pfd, void * user_data);
 static int on_write(struct pollfd * pfd, void * user_data);
-
 static int add_message_version(spv_node_context_t * spv, int protocol_version);
 int main(int argc, char **argv)
 {
@@ -192,7 +98,7 @@ int main(int argc, char **argv)
 	spv->port = port;
 
 	#define MAX_RETRIES (5)
-	for(int retries = 0; retries < MAX_RETRIES; ++retries) 
+	for(int retries = 0; !g_quit && (retries < MAX_RETRIES); ++retries) 
 	{
 		int fd = connect2(default_fullnode, port, spv->addr, &spv->addr_len);
 		if(fd < 0) {
@@ -247,7 +153,6 @@ int main(int argc, char **argv)
 		}
 	
 	}
-
 	return rc;
 }
 
@@ -276,28 +181,6 @@ static int send_message_pong(spv_node_context_t * spv, const struct bitcoin_mess
 	return 0;
 }
 
-
-void bitcoin_message_version_dump(const struct bitcoin_message_version * msg)
-{
-	printf("==== %s() ====\n", __FUNCTION__);
-	printf("version: %d(0x%.8x)\n", msg->version, msg->version);
-	printf("service: %"PRIx64"\n", msg->services);
-	printf("timestamp: %" PRIi64"\n", msg->timestamp);
-	char addr_buf[INET6_ADDRSTRLEN + 1] = "";
-	const char * addr = inet_ntop(AF_INET6, msg->addr_recv.ip, addr_buf, sizeof(msg->addr_recv.ip));
-	printf("addr_recv: %s:%hu\n", addr, msg->addr_recv.port);
-	
-	addr = inet_ntop(AF_INET6, msg->addr_from.ip, addr_buf, sizeof(msg->addr_from.ip));
-	printf("addr_from: %s:%hu\n", addr, msg->addr_from.port);
-	printf("nonce: %ld(%"PRIx64")\n", msg->nonce, msg->nonce);
-	
-	int cb = varstr_length(msg->user_agent);
-	printf("user_agent(cb=%d): %*s\n", cb, cb, varstr_getdata_ptr(msg->user_agent));
-	printf("start_height: %d\n", msg->start_height);
-	printf("relay: %d\n", msg->relay);
-	return;
-}
-
 int on_message_handler(spv_node_context_t *spv, const struct bitcoin_message * in_msg)
 {
 	int rc = 0;
@@ -305,26 +188,29 @@ int on_message_handler(spv_node_context_t *spv, const struct bitcoin_message * i
 		bitcoin_message_type_to_string(in_msg->msg_type),
 		in_msg->msg_data->length);
 	
+	if(in_msg->msg_type < 0 || in_msg->msg_type >= bitcoin_message_types_count) return -1;
+	
+	spv_node_message_callback_fn msg_callback = spv->msg_callbacks[in_msg->msg_type];
+	if(msg_callback) return msg_callback(spv, in_msg);
+	
 	switch(in_msg->msg_type)
 	{
 	case bitcoin_message_type_version:
 		bitcoin_message_version_dump(in_msg->priv);
-		if(rc) break;
-		send_message_verack(spv, in_msg);
-		break;
+		return send_message_verack(spv, in_msg);
 	case bitcoin_message_type_verack:
-		break;
+		return 0;
 	case bitcoin_message_type_ping:
-		send_message_pong(spv, in_msg);
-		
+		return send_message_pong(spv, in_msg);
 	default:
 		break;
 	}
-	
 	return rc;
 }
 
-
+/**************************************************
+ * network controller
+**************************************************/
 static int on_read(struct pollfd * pfd, void * user_data)
 {
 	spv_node_context_t * spv = user_data;
@@ -513,6 +399,13 @@ spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, uint32_t ma
 	
 	auto_buffer_init(spv->in_buf, 0);
 	auto_buffer_init(spv->out_buf, 0);
+	
+	// set default msg_handler_callbacks
+	memcpy(spv->msg_callbacks, s_spv_node_callbacks, sizeof(spv->msg_callbacks));
+	
+	// disable some handlers and use local implementation
+	spv->msg_callbacks[bitcoin_message_type_version] = NULL;
+	spv->msg_callbacks[bitcoin_message_type_ping] = NULL;
 	
 	return spv;
 }

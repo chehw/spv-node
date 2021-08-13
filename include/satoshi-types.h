@@ -494,6 +494,7 @@ struct bitcoin_message_version
 struct bitcoin_message_version * bitcoin_message_version_parse(struct bitcoin_message_version * msg, const unsigned char * payload, size_t length);
 void bitcoin_message_version_cleanup(struct bitcoin_message_version * msg);
 ssize_t bitcoin_message_version_serialize(const struct bitcoin_message_version *msg, unsigned char ** p_data);
+void bitcoin_message_version_dump(const struct bitcoin_message_version * msg);
 
 struct bitcoin_message_addr
 {

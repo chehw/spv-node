@@ -43,7 +43,7 @@ static int on_message_verack(struct spv_node_context * spv, const bitcoin_messag
 static int on_message_addr(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_getdata(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
-static int on_message_notefound(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
+static int on_message_notfound(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_getblocks(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_getheaders(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_tx(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
@@ -77,7 +77,7 @@ spv_node_message_callback_fn s_spv_node_callbacks[bitcoin_message_types_count] =
 	[bitcoin_message_type_addr] = on_message_addr,
 	[bitcoin_message_type_inv] = on_message_inv,
 	[bitcoin_message_type_getdata] = on_message_getdata,
-	[bitcoin_message_type_notefound] = on_message_notefound,
+	[bitcoin_message_type_notfound] = on_message_notfound,
 	[bitcoin_message_type_getblocks] = on_message_getblocks,
 	[bitcoin_message_type_getheaders] = on_message_getheaders,
 	[bitcoin_message_type_tx] = on_message_tx,
@@ -212,7 +212,7 @@ static int on_message_getdata(struct spv_node_context * spv, const bitcoin_messa
 	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;
 }
-static int on_message_notefound(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
+static int on_message_notfound(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	debug_printf("%s(%p)", __FUNCTION__, in_msg);
 	return 0;

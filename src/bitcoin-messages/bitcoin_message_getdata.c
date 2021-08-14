@@ -1,5 +1,5 @@
 /*
- * bitcoin_message_inv.c
+ * bitcoin_message_getdata.c
  * 
  * Copyright 2021 chehw <hongwei.che@gmail.com>
  * 
@@ -34,9 +34,9 @@
 #include "bitcoin-message.h"
 #include "utils.h"
 
-void bitcoin_message_inv_dump(const struct bitcoin_message_inv * msg)
+void bitcoin_message_getdata_dump(const struct bitcoin_message_getdata * msg)
 {
-#ifdef _DEBUG
+	#ifdef _DEBUG
 	printf("==== %s() ====\n", __FUNCTION__);
 	printf("num_invs: %d\n", (int)msg->count);
 	
@@ -49,48 +49,47 @@ void bitcoin_message_inv_dump(const struct bitcoin_message_inv * msg)
 #endif
 	return;
 }
-
-void bitcoin_message_inv_cleanup(struct bitcoin_message_inv * msg)
+struct bitcoin_message_getdata * bitcoin_message_getdata_parse(struct bitcoin_message_getdata * msg, const unsigned char * payload, size_t length)
 {
+	const unsigned char * p = payload;
+	const unsigned char * p_end = payload + length;
+	if(p_end <= p) return NULL;
+	
+	ssize_t count = varint_get((varint_t *)p);
+	if(count <= 0 || count > BITCOIN_MESSAGE_MAX_PAYLOAD_ENTRIES) return NULL;
+	
+	p += varint_size((varint_t *)p);
+	
+	size_t size = sizeof(struct bitcoin_inventory) * count;
+	if((p + size) != p_end) return NULL;
+	
+	struct bitcoin_inventory * invs = malloc(size);
+	assert(invs);
+	memcpy(invs, p, size);
+	
+	if(NULL == msg) msg = calloc(1, sizeof(*msg));
+	
+	msg->count = count;
+	msg->invs = invs;
+	return msg;
+}
+
+void bitcoin_message_getdata_cleanup(struct bitcoin_message_getdata * msg)
+{
+	if(NULL == msg) return;
 	if(msg->invs) free(msg->invs);
 	memset(msg, 0, sizeof(*msg));
 	return;
 }
-struct bitcoin_message_inv * bitcoin_message_inv_parse(struct bitcoin_message_inv * _msg, const unsigned char * payload, size_t length)
-{
-	assert(payload && length > 0);
-	struct bitcoin_message_inv * msg = _msg;
-	if(NULL == msg) msg = calloc(1, sizeof(*msg));
-	assert(msg);
-	const unsigned char * p = payload;
-	const unsigned char * p_end = p + length;
-	size_t size = varint_size((varint_t *)p);
-	if((p + size) >= p_end) goto label_error;
-	msg->count = varint_get((varint_t *)p); p += size;
-	
-	size = sizeof(struct bitcoin_inventory) * msg->count;
-	if((p + size) > p_end) goto label_error;
-	struct bitcoin_inventory * invs = malloc(size);
-	assert(invs);
-	memcpy(invs, p, size);
-	msg->invs = invs;
-	return msg;
-	
-label_error:
-	bitcoin_message_inv_cleanup(msg);
-	if(NULL == _msg) free(msg);
-	return NULL;
-	
-}
 
-ssize_t bitcoin_message_inv_serialize(const struct bitcoin_message_inv * msg, unsigned char ** p_data)
+ssize_t bitcoin_message_getdata_serialize(const struct bitcoin_message_getdata * msg, unsigned char ** p_data)
 {
 	assert(msg && msg->count > 0 && msg->count <= BITCOIN_MESSAGE_MAX_PAYLOAD_ENTRIES);
 	
 	size_t vint_size = varint_calc_size(msg->count);
 	assert(vint_size > 0 && vint_size <= 9);
 
-	size_t total_size = vint_size + sizeof(struct bitcoin_message_inv) * msg->count;
+	size_t total_size = vint_size + sizeof(struct bitcoin_message_getdata) * msg->count;
 	if(NULL == p_data) return total_size;
 	
 	unsigned char * data = *p_data;
@@ -100,6 +99,8 @@ ssize_t bitcoin_message_inv_serialize(const struct bitcoin_message_inv * msg, un
 		*p_data = data;
 	}
 	varint_set((varint_t *)data, msg->count);
-	memcpy(data + vint_size, msg->invs, sizeof(struct bitcoin_message_inv) * msg->count);
+	memcpy(data + vint_size, msg->invs, sizeof(struct bitcoin_message_getdata) * msg->count);
 	return total_size;
 }
+
+

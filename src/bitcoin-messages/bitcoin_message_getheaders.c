@@ -34,6 +34,14 @@
 #include "bitcoin-message.h"
 #include "utils.h"
 
+/**
+ * getheaders
+ *   Return a headers packet containing the headers of blocks 
+ *   starting right after the last known hash in the block locator object, 
+ *   up to hash_stop or 2000 blocks, whichever comes first. 
+**/
+#define BITCOIN_MESSAGE_GETHEADERS_HASH_COUNT_MAX (2000)
+
 void bitcoin_message_getheaders_dump(const struct bitcoin_message_getheaders * msg)
 {
 #ifdef _DEBUG
@@ -74,7 +82,7 @@ struct bitcoin_message_getheaders * bitcoin_message_getheaders_parse(struct bitc
 	size = varint_size((varint_t *)p);
 	if((p + size) >= p_end) goto label_error;
 	msg->hash_count = varint_get((varint_t *)p); p += size;
-	if(msg->hash_count <= 0 || msg->hash_count > INT32_MAX) goto label_error;
+	if(msg->hash_count <= 0 || msg->hash_count > BITCOIN_MESSAGE_GETHEADERS_HASH_COUNT_MAX) goto label_error;
 	
 	size = sizeof(*msg->hashes) * msg->hash_count;
 	if((p + size) >= p_end) goto label_error;
@@ -92,4 +100,39 @@ label_error:
 	if(NULL == _msg) free(msg);
 	return NULL;
 	
+}
+
+ssize_t bitcoin_message_getheaders_serialize(const struct bitcoin_message_getheaders * msg, unsigned char ** p_data)
+{
+	assert(msg && msg->hash_count > 0 && msg->hash_count <= BITCOIN_MESSAGE_GETHEADERS_HASH_COUNT_MAX);
+	
+	size_t vint_size = varint_calc_size(msg->hash_count);
+	assert(vint_size > 0 && vint_size <= 9);
+
+	size_t total_size = sizeof(uint32_t) 
+			+ vint_size 
+			+ sizeof(struct bitcoin_message_getdata) * msg->hash_count
+			+ sizeof(msg->hash_stop);
+	if(NULL == p_data) return total_size;
+	
+	unsigned char * data = *p_data;
+	if(NULL == data) {
+		data = malloc(total_size);
+		assert(data);
+		*p_data = data;
+	}
+	unsigned char * p = data;
+	unsigned char * p_end = data + total_size;
+	
+	memcpy(p, &msg->version, sizeof(uint32_t)); p += sizeof(uint32_t);
+	
+	varint_set((varint_t *)p, msg->hash_count); p += vint_size;
+	memcpy(p, msg->hashes, sizeof(struct bitcoin_message_getdata) * msg->hash_count); 
+	p += sizeof(struct bitcoin_message_getdata) * msg->hash_count;
+	
+	memcpy(p, &msg->hash_stop, sizeof(msg->hash_stop));
+	p += sizeof(msg->hash_stop);
+	
+	assert(p == p_end);
+	return total_size;
 }

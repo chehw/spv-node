@@ -25,7 +25,7 @@ enum bitcoin_message_type	// command
 	bitcoin_message_type_addr,
 	bitcoin_message_type_inv,
 	bitcoin_message_type_getdata,
-	bitcoin_message_type_notefound,
+	bitcoin_message_type_notfound,
 	bitcoin_message_type_getblocks,
 	bitcoin_message_type_getheaders,
 	bitcoin_message_type_tx,
@@ -205,11 +205,12 @@ void bitcoin_message_inv_dump(const struct bitcoin_message_inv * msg);
 struct bitcoin_message_getdata
 {
 	ssize_t count;
-	struct bitcoin_inventory * inventories;
+	struct bitcoin_inventory * invs;
 };
 struct bitcoin_message_getdata * bitcoin_message_getdata_parse(struct bitcoin_message_getdata * msg, const unsigned char * payload, size_t length);
 void bitcoin_message_getdata_cleanup(struct bitcoin_message_getdata * msg);
 ssize_t bitcoin_message_getdata_serialize(const struct bitcoin_message_getdata * msg, unsigned char ** p_data);
+void bitcoin_message_getdata_dump(const struct bitcoin_message_getdata * msg);
 
 /******************************************
  * bitcoin_message_notfound
@@ -217,11 +218,12 @@ ssize_t bitcoin_message_getdata_serialize(const struct bitcoin_message_getdata *
 struct bitcoin_message_notfound
 {
 	ssize_t count;
-	struct bitcoin_inventory * inventories;
+	struct bitcoin_inventory * invs;
 };
 struct bitcoin_message_notfound * bitcoin_message_notfound_parse(struct bitcoin_message_notfound * msg, const unsigned char * payload, size_t length);
 void bitcoin_message_notfound_cleanup(struct bitcoin_message_notfound * msg_notfound);
-
+ssize_t bitcoin_message_notfound_serialize(const struct bitcoin_message_notfound * msg, unsigned char ** p_data);
+void bitcoin_message_notfound_dump(const struct bitcoin_message_notfound * msg);
 
 /******************************************
  * bitcoin_message_getblocks
@@ -249,6 +251,7 @@ struct bitcoin_message_getheaders
 };
 struct bitcoin_message_getheaders * bitcoin_message_getheaders_parse(struct bitcoin_message_getheaders * msg, const unsigned char * payload, size_t length);
 void bitcoin_message_getheaders_cleanup(struct bitcoin_message_getheaders * msg);
+ssize_t bitcoin_message_getheaders_serialize(const struct bitcoin_message_getheaders * msg, unsigned char ** p_data);
 void bitcoin_message_getheaders_dump(const struct bitcoin_message_getheaders * msg);
 
 /******************************************

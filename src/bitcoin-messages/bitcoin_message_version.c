@@ -71,52 +71,6 @@ void bitcoin_message_version_dump(const struct bitcoin_message_version * msg)
 	return;
 }
 
-ssize_t bitcoin_message_version_serialize(const struct bitcoin_message_version *msg, unsigned char ** p_data)
-{
-	ssize_t size = 0;
-	size = sizeof(int32_t) + sizeof(uint64_t) + sizeof(int64_t) + sizeof(msg->addr_recv);
-	if(msg->version >= 106) {
-		size += sizeof(msg->addr_from) + sizeof(msg->nonce);
-		assert(msg->user_agent);
-		size += varstr_size(msg->user_agent);
-		size += sizeof(msg->start_height);
-	}
-	if(msg->version >= 70001) ++size;	// sizeof(msg->relay)
-	
-	if(NULL == p_data) return size;
-	unsigned char * payload = *p_data;
-	if(NULL == payload) {
-		payload = malloc(size);
-		assert(payload);
-		*p_data = payload;
-	}
-	
-	unsigned char * p = payload;
-	unsigned char * p_end = p + size;
-	
-#define append_data(dst, src, size)  do { memcpy(dst, src, size); dst += size; } while(0)
-	append_data(p, &msg->version, sizeof(msg->version));
-	append_data(p, &msg->services, sizeof(msg->services));
-	append_data(p, &msg->timestamp, sizeof(msg->timestamp));
-	append_data(p, &msg->addr_recv, sizeof(msg->addr_recv));
-	
-	if(msg->version >= 106) {
-		append_data(p, &msg->addr_from, sizeof(msg->addr_from));
-		append_data(p, &msg->nonce, sizeof(msg->nonce));
-		
-		ssize_t cb_user_agent = varstr_size(msg->user_agent);
-		append_data(p, msg->user_agent, cb_user_agent);
-		append_data(p, &msg->start_height, sizeof(msg->start_height));
-		
-		if(msg->version >= 70001) {
-			append_data(p, &msg->relay, sizeof(msg->relay));
-		}
-	}
-#undef append_data
-
-	assert(p == p_end);
-	return size;
-}
 
 void bitcoin_message_version_cleanup(struct bitcoin_message_version * msg)
 {
@@ -168,4 +122,52 @@ label_error:
 	bitcoin_message_version_cleanup(msg);
 	if(NULL == _msg) free(msg);
 	return NULL;
+}
+
+
+ssize_t bitcoin_message_version_serialize(const struct bitcoin_message_version *msg, unsigned char ** p_data)
+{
+	ssize_t size = 0;
+	size = sizeof(int32_t) + sizeof(uint64_t) + sizeof(int64_t) + sizeof(msg->addr_recv);
+	if(msg->version >= 106) {
+		size += sizeof(msg->addr_from) + sizeof(msg->nonce);
+		assert(msg->user_agent);
+		size += varstr_size(msg->user_agent);
+		size += sizeof(msg->start_height);
+	}
+	if(msg->version >= 70001) ++size;	// sizeof(msg->relay)
+	
+	if(NULL == p_data) return size;
+	unsigned char * payload = *p_data;
+	if(NULL == payload) {
+		payload = malloc(size);
+		assert(payload);
+		*p_data = payload;
+	}
+	
+	unsigned char * p = payload;
+	unsigned char * p_end = p + size;
+	
+#define append_data(dst, src, size)  do { memcpy(dst, src, size); dst += size; } while(0)
+	append_data(p, &msg->version, sizeof(msg->version));
+	append_data(p, &msg->services, sizeof(msg->services));
+	append_data(p, &msg->timestamp, sizeof(msg->timestamp));
+	append_data(p, &msg->addr_recv, sizeof(msg->addr_recv));
+	
+	if(msg->version >= 106) {
+		append_data(p, &msg->addr_from, sizeof(msg->addr_from));
+		append_data(p, &msg->nonce, sizeof(msg->nonce));
+		
+		ssize_t cb_user_agent = varstr_size(msg->user_agent);
+		append_data(p, msg->user_agent, cb_user_agent);
+		append_data(p, &msg->start_height, sizeof(msg->start_height));
+		
+		if(msg->version >= 70001) {
+			append_data(p, &msg->relay, sizeof(msg->relay));
+		}
+	}
+#undef append_data
+
+	assert(p == p_end);
+	return size;
 }

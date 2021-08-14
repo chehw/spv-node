@@ -1,5 +1,5 @@
 /*
- * bitcoin_message_getheaders.c
+ * bitcoin_message_getblocks.c
  * 
  * Copyright 2021 chehw <hongwei.che@gmail.com>
  * 
@@ -35,14 +35,12 @@
 #include "utils.h"
 
 /**
- * getheaders
- *   Return a headers packet containing the headers of blocks 
- *   starting right after the last known hash in the block locator object, 
- *   up to hash_stop or 2000 blocks, whichever comes first. 
+ * getblocks
+	Return an inv packet containing the list of blocks starting right after the last known hash in the block locator object, up to hash_stop or 500 blocks, whichever comes first.
 **/
-#define BITCOIN_MESSAGE_GETHEADERS_HASH_COUNT_MAX (2000)
+#define BITCOIN_MESSAGE_GETBLOCKS_HASH_COUNT_MAX (500)
 
-void bitcoin_message_getheaders_dump(const struct bitcoin_message_getheaders * msg)
+void bitcoin_message_getblocks_dump(const struct bitcoin_message_getblocks * msg)
 {
 #ifdef _DEBUG
 	printf("==== %s() ====\n", __FUNCTION__);
@@ -58,27 +56,28 @@ void bitcoin_message_getheaders_dump(const struct bitcoin_message_getheaders * m
 	return;
 }
 
-void bitcoin_message_getheaders_cleanup(struct bitcoin_message_getheaders * msg)
+void bitcoin_message_getblocks_cleanup(struct bitcoin_message_getblocks * msg)
 {
 	if(NULL == msg) return;
 	if(msg->hashes) free(msg->hashes);
 	memset(msg, 0, sizeof(*msg));
-	return;
 }
-struct bitcoin_message_getheaders * bitcoin_message_getheaders_parse(struct bitcoin_message_getheaders * msg, const unsigned char * payload, size_t length)
+
+struct bitcoin_message_getblocks * bitcoin_message_getblocks_parse(struct bitcoin_message_getblocks * msg, const unsigned char * payload, size_t length)
 {
 	assert(payload && length > 0);
 	const unsigned char * p = payload;
 	const unsigned char * p_end = p + length;
 	
-	uint32_t version = 0;
+	
 	if((p + sizeof(uint32_t)) >= p_end) return NULL;
-	memcpy(&version, p, sizeof(uint32_t)); p += sizeof(uint32_t);
+	uint32_t version = 0;
+	memcpy(&version, p, sizeof(uint32_t)); ; p += sizeof(uint32_t);
 	
 	size_t vint_size = varint_size((varint_t *)p);
 	if((p + vint_size) >= p_end) return NULL;
 	size_t count = varint_get((varint_t *)p); p += vint_size;
-	if(count <= 0 || count > BITCOIN_MESSAGE_GETHEADERS_HASH_COUNT_MAX) return NULL;
+	if(count <= 0 || count > BITCOIN_MESSAGE_GETBLOCKS_HASH_COUNT_MAX) return NULL;
 	
 	size_t hashes_array_size = sizeof(*msg->hashes) * count;
 	if((p + hashes_array_size + sizeof(msg->hash_stop)) != p_end) return NULL;
@@ -97,9 +96,9 @@ struct bitcoin_message_getheaders * bitcoin_message_getheaders_parse(struct bitc
 	return msg;
 }
 
-ssize_t bitcoin_message_getheaders_serialize(const struct bitcoin_message_getheaders * msg, unsigned char ** p_data)
+ssize_t bitcoin_message_getblocks_serialize(const struct bitcoin_message_getblocks * msg, unsigned char ** p_data)
 {
-	assert(msg && msg->hash_count > 0 && msg->hash_count <= BITCOIN_MESSAGE_GETHEADERS_HASH_COUNT_MAX);
+	assert(msg && msg->hash_count > 0 && msg->hash_count <= BITCOIN_MESSAGE_GETBLOCKS_HASH_COUNT_MAX);
 	
 	size_t vint_size = varint_calc_size(msg->hash_count);
 	assert(vint_size > 0 && vint_size <= 9);

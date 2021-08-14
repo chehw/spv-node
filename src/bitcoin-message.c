@@ -34,7 +34,7 @@
 #include <inttypes.h>
 #include <endian.h>
 
-#include "satoshi-types.h"
+#include "bitcoin-message.h"
 #include "utils.h"
 
 #if __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
@@ -243,79 +243,4 @@ ssize_t bitcoin_message_serialize(const struct bitcoin_message * msg, unsigned c
 	return 0;
 }
 
-void bitcoin_message_getheaders_cleanup(struct bitcoin_message_getheaders * msg)
-{
-	if(NULL == msg) return;
-	if(msg->hashes) free(msg->hashes);
-	memset(msg, 0, sizeof(*msg));
-	return;
-}
-struct bitcoin_message_getheaders * bitcoin_message_getheaders_parse(struct bitcoin_message_getheaders * _msg, const unsigned char * payload, size_t length)
-{
-	assert(payload && length > 0);
-	struct bitcoin_message_getheaders * msg = _msg;
-	if(NULL == msg) msg = calloc(1, sizeof(*msg));
-	assert(msg);
-	
-	const unsigned char * p = payload;
-	const unsigned char * p_end = p + length;
-	size_t size = 0;
-	
-	if((p + sizeof(int32_t)) >= p_end) goto label_error;
-	msg->version = *(int32_t *)p; 	p += sizeof(int32_t);
-	
-	size = varint_size((varint_t *)p);
-	if((p + size) >= p_end) goto label_error;
-	msg->hash_count = varint_get((varint_t *)p); p += size;
-	if(msg->hash_count <= 0 || msg->hash_count > INT32_MAX) goto label_error;
-	
-	size = sizeof(*msg->hashes) * msg->hash_count;
-	if((p + size) >= p_end) goto label_error;
-	uint256_t * hashes = malloc(size);
-	assert(hashes);
-	memcpy(hashes, p, size); p += size;
-	msg->hashes = hashes;
-	
-	if((p + sizeof(msg->hash_stop)) > p_end) goto label_error;
-	memcpy(&msg->hash_stop, p, sizeof(msg->hash_stop)); 
-	return msg;
-	
-label_error:
-	bitcoin_message_getheaders_cleanup(msg);
-	if(NULL == _msg) free(msg);
-	return NULL;
-	
-}
 
-void bitcoin_message_inv_cleanup(struct bitcoin_message_inv * msg)
-{
-	if(msg->invs) free(msg->invs);
-	memset(msg, 0, sizeof(*msg));
-	return;
-}
-struct bitcoin_message_inv * bitcoin_message_inv_parse(struct bitcoin_message_inv * _msg, const unsigned char * payload, size_t length)
-{
-	assert(payload && length > 0);
-	struct bitcoin_message_inv * msg = _msg;
-	if(NULL == msg) msg = calloc(1, sizeof(*msg));
-	assert(msg);
-	const unsigned char * p = payload;
-	const unsigned char * p_end = p + length;
-	size_t size = varint_size((varint_t *)p);
-	if((p + size) >= p_end) goto label_error;
-	msg->count = varint_get((varint_t *)p); p += size;
-	
-	size = sizeof(struct bitcoin_inventory) * msg->count;
-	if((p + size) > p_end) goto label_error;
-	struct bitcoin_inventory * invs = malloc(size);
-	assert(invs);
-	memcpy(invs, p, size);
-	msg->invs = invs;
-	return msg;
-	
-label_error:
-	bitcoin_message_inv_cleanup(msg);
-	if(NULL == _msg) free(msg);
-	return NULL;
-	
-}

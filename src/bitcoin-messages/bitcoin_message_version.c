@@ -34,7 +34,17 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
-#include "satoshi-types.h"
+#include "bitcoin-message.h"
+#include "utils.h"
+
+static const unsigned char s_ipv4_mapped_prefix[12] = { [10] = 0xff, [11] = 0xff, };
+static const char * ipaddr_to_string(const char ip[static 16], char * addr_buf, size_t buf_size)
+{
+	if(0 == memcmp(ip, s_ipv4_mapped_prefix, 12)) {
+		return inet_ntop(AF_INET, ip + 12, addr_buf, buf_size);
+	}
+	return inet_ntop(AF_INET6, ip, addr_buf, buf_size);
+}
 
 void bitcoin_message_version_dump(const struct bitcoin_message_version * msg)
 {
@@ -44,10 +54,12 @@ void bitcoin_message_version_dump(const struct bitcoin_message_version * msg)
 	printf("service: %"PRIx64"\n", msg->services);
 	printf("timestamp: %" PRIi64"\n", msg->timestamp);
 	char addr_buf[INET6_ADDRSTRLEN + 1] = "";
-	const char * addr = inet_ntop(AF_INET6, msg->addr_recv.ip, addr_buf, sizeof(msg->addr_recv.ip));
+	
+	const char * addr = ipaddr_to_string(msg->addr_recv.ip, addr_buf, sizeof(addr_buf));
+	if(NULL == addr) perror("msg->addr_recv.ip");
 	printf("addr_recv: %s:%hu\n", addr, msg->addr_recv.port);
 	
-	addr = inet_ntop(AF_INET6, msg->addr_from.ip, addr_buf, sizeof(msg->addr_from.ip));
+	addr = ipaddr_to_string(msg->addr_recv.ip, addr_buf, sizeof(addr_buf));
 	printf("addr_from: %s:%hu\n", addr, msg->addr_from.port);
 	printf("nonce: %ld(%"PRIx64")\n", msg->nonce, msg->nonce);
 	
@@ -58,7 +70,6 @@ void bitcoin_message_version_dump(const struct bitcoin_message_version * msg)
 #endif
 	return;
 }
-
 
 ssize_t bitcoin_message_version_serialize(const struct bitcoin_message_version *msg, unsigned char ** p_data)
 {
@@ -113,6 +124,7 @@ void bitcoin_message_version_cleanup(struct bitcoin_message_version * msg)
 	memset(msg, 0, sizeof(*msg));
 	return;
 }
+
 struct bitcoin_message_version * bitcoin_message_version_parse(struct bitcoin_message_version * _msg, const unsigned char * payload, size_t length)
 {
 	assert(payload && length > 0);
@@ -125,30 +137,33 @@ struct bitcoin_message_version * bitcoin_message_version_parse(struct bitcoin_me
 	
 	if((p + sizeof(int32_t) + sizeof(uint64_t) + sizeof(int64_t) + sizeof(msg->addr_recv)) > p_end) goto label_error;
 
-	msg->version = *(int32_t *)p; 	p += sizeof(int32_t);
-	msg->services = *(uint64_t *)p; p += sizeof(uint64_t);
-	msg->timestamp = *(int64_t *)p;	p += sizeof(int64_t);
-	memcpy(&msg->addr_recv, p, sizeof(msg->addr_recv)); p += sizeof(msg->addr_recv);
+#define load_data(dst, src, size) do { memcpy(dst, src, size); src += size; } while(0)
+	load_data(&msg->version, p, sizeof(int32_t));
+	load_data(&msg->services, p, sizeof(int64_t));
+	load_data(&msg->timestamp, p, sizeof(int64_t));
+	load_data(&msg->addr_recv, p, sizeof(msg->addr_recv));
 	if(msg->version < 106) return msg;
 	
 	if((p + sizeof(msg->addr_from) + sizeof(uint64_t)) >= p_end) goto label_error;
-	memcpy(&msg->addr_from, p, sizeof(msg->addr_from)); p += sizeof(msg->addr_from);
-	msg->nonce = *(uint64_t *)p; p += sizeof(uint64_t);
+	load_data(&msg->addr_from, p, sizeof(msg->addr_from));
+	load_data(&msg->nonce, p, sizeof(uint64_t));
 	
-	size_t size = varstr_size((varstr_t *)p);
-	if(size < 1 || (p + size + sizeof(int32_t) > p_end)) goto label_error;
-	msg->user_agent = malloc(size);
+	size_t cb_user_agent = varstr_size((varstr_t *)p);
+	if(cb_user_agent < 1 || (p + cb_user_agent + sizeof(int32_t) > p_end)) goto label_error;
+	msg->user_agent = malloc(cb_user_agent);
 	assert(msg->user_agent);
-	memcpy(msg->user_agent, p, size); p += size;
-	msg->start_height = *(int32_t *)p; p += sizeof(int32_t);
+	
+	load_data(msg->user_agent, p, cb_user_agent);
+	load_data(&msg->start_height, p, sizeof(int32_t));
 	
 	if(msg->version >= 70001) {
 		if(p >= p_end) goto label_error;
 		msg->relay = *p++;
 	}
-	assert(p <= p_end);
+	assert(p == p_end);
 	return msg;
-	
+#undef load_data
+
 label_error:
 	bitcoin_message_version_cleanup(msg);
 	if(NULL == _msg) free(msg);

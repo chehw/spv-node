@@ -203,6 +203,7 @@ static int on_message_addr(struct spv_node_context * spv, const bitcoin_message_
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	debug_printf("%s(%p)", __FUNCTION__, in_msg);
+	bitcoin_message_inv_dump(in_msg->priv);
 	return 0;
 }
 
@@ -225,6 +226,7 @@ static int on_message_getblocks(struct spv_node_context * spv, const bitcoin_mes
 static int on_message_getheaders(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	debug_printf("%s(%p)", __FUNCTION__, in_msg);
+	bitcoin_message_getheaders_dump(in_msg->priv);
 	return 0;
 }
 

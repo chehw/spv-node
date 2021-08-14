@@ -18,6 +18,8 @@ extern "C" {
 #include "auto_buffer.h"
 #include "avl_tree.h"
 
+#include "bitcoin-message.h"
+
 typedef struct spv_node_context spv_node_context_t;
 typedef int (* spv_node_message_callback_fn)(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 

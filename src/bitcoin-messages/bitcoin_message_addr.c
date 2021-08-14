@@ -33,7 +33,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
-#include "satoshi-types.h"
+#include "bitcoin-message.h"
 
 struct bitcoin_message_addr * bitcoin_message_addr_parse(struct bitcoin_message_addr * msg, const unsigned char * payload, size_t length)
 {

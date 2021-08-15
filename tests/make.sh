@@ -47,6 +47,8 @@ case "$target" in
 			../src/bitcoin-message.c ../src/bitcoin-messages/*.c \
 			../src/base/*.c \
 			../utils/*.c \
+			../src/gcloud/gcloud-storage.c \
+			../src/gcloud/google-oauth2.c \
 			${LIBS} -lgnutls -lgmp -lcurl -lsecp256k1
 		RET=$?
 		;;

@@ -37,6 +37,9 @@
 
 #include <signal.h>
 
+#include "gcloud/google-oauth2.h"
+#include "gcloud/gcloud-storage.h"
+
 static int custom_init(spv_node_context_t * spv);
 void on_signal(int sig);
 int main(int argc, char **argv)
@@ -45,7 +48,19 @@ int main(int argc, char **argv)
 	signal(SIGUSR1, on_signal);
 	
 	int rc = 0;
-	spv_node_context_t * spv = spv_node_context_init(NULL, NULL);
+	const char * credentials_file = ".private/credentials.json";
+	if(argc > 1) credentials_file = argv[1];
+	
+	static const char * g_scope = "https://www.googleapis.com/auth/devstorage.read_write";
+	const char * bucket_name = "storage-tokyo-01";
+	google_oauth2_context_t * gauth = google_oauth2_context_new(NULL);
+	rc = gauth->load_credentials_file(gauth, credentials_file);
+	gauth->set_scope(gauth, g_scope);
+	
+	gcloud_storage_context_t * gstorage = gcloud_storage_context_init(NULL, gauth, bucket_name, NULL);
+	assert(gstorage);
+	
+	spv_node_context_t * spv = spv_node_context_init(NULL, gstorage);
 	rc = spv_node_parse_args(spv, argc, argv);
 	assert(0 == rc);
 	
@@ -221,11 +236,48 @@ static int on_message_block(struct spv_node_context * spv, const bitcoin_message
 	return 0;
 }
 
+#include <limits.h>
+
+#define dump_json_response(title, jresponse) do { assert(jresponse); \
+		fprintf(stderr, "%s: %s\n", title, json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_PRETTY)); \
+		json_object_put(jresponse); \
+		jresponse = NULL; \
+	} while(0)
+
+static int upload_to_gstorage(gcloud_storage_context_t * gstorage, const struct bitcoin_message_block_headers * msg)
+{
+	// test2. upload files
+#define ROOT_PATH "block_hdrs/"
+	char object_name[200] = ROOT_PATH;
+	char * p_name = object_name + sizeof(ROOT_PATH) - 1;
+#undef ROOT_PATH
+
+	for(int i = 0; i < msg->count; ++i) {
+		unsigned char hash[32] = "";
+		const struct satoshi_block_header * hdr = &msg->hdrs[i].hdr;
+		hash256(hdr, sizeof(*hdr), hash);
+		
+		// reverse bytes;
+		uint256_reverse((uint256_t *)hash);	// big-endian hash to little-endian search-index
+		ssize_t cb = bin2hex(hash, 32, &p_name);
+		assert(cb == 64);
+		strcpy(&p_name[64], ".hdr");
+	
+		json_object * jresponse = gstorage->objects->insert(gstorage, object_name, "media", hdr, sizeof(*hdr), NULL);
+		dump_json_response(object_name, jresponse);
+	}
+	
+	return 0;
+}
+
 static int on_message_headers(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	struct bitcoin_message_block_headers * msg = bitcoin_message_get_object(in_msg);
 	bitcoin_message_block_headers_dump(msg);
 	if(msg->count <= 0) return -1;
+	
+	gcloud_storage_context_t * gstorage = spv->user_data;
+	assert(gstorage);
 	
 	blockchain_t * chain = spv->chain;
 	assert(chain && chain->add);
@@ -234,6 +286,10 @@ static int on_message_headers(struct spv_node_context * spv, const bitcoin_messa
 		rc = chain->add(chain, NULL, &msg->hdrs[i].hdr);
 		if(rc) break;
 	}
+	
+	///< @todo use a background thread to upload data
+	upload_to_gstorage(gstorage, msg);
+	
 	ssize_t height = chain->height;
 	fprintf(stderr, "\e[32m" "current height: %ld" "\e[39m" "\n", (long)height);
 	

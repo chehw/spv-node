@@ -501,7 +501,7 @@ int spv_node_run(spv_node_context_t * spv, int async_mode)
 			if(0 == rc && (pfd[0].revents & POLLOUT)) {
 				rc = on_write(pfd, spv);
 			}
-			printf("rc = %d, revents = %.8x\n", rc, pfd[0].revents);
+			// printf("rc = %d, revents = %.8x\n", rc, pfd[0].revents);
 			
 			if(rc < 0 
 				|| (pfd[0].revents & POLLERR) 

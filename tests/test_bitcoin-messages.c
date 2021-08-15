@@ -49,7 +49,6 @@ int main(int argc, char **argv)
 	
 	int rc = 0;
 	const char * credentials_file = ".private/credentials.json";
-	if(argc > 1) credentials_file = argv[1];
 	
 	static const char * g_scope = "https://www.googleapis.com/auth/devstorage.read_write";
 	const char * bucket_name = "storage-tokyo-01";
@@ -68,6 +67,11 @@ int main(int argc, char **argv)
 	assert(0 == rc);
 	
 	rc = spv_node_run(spv, 0);
+	
+	ssize_t height = blockchain_get_lastest(spv->chain, NULL, NULL);
+	fprintf(stderr, "[INFO]: spv_node_run()=%d, lastest block: %ld\n",
+		rc, height);
+	
 	spv_node_context_cleanup(spv);
 	free(spv);
 	return rc;
@@ -237,7 +241,9 @@ static int on_message_block(struct spv_node_context * spv, const bitcoin_message
 }
 
 #include <limits.h>
-
+#ifndef UNUSED
+#define UNUSED(x) ((void)(x))
+#endif
 #define dump_json_response(title, jresponse) do { assert(jresponse); \
 		fprintf(stderr, "%s: %s\n", title, json_object_to_json_string_ext(jresponse, JSON_C_TO_STRING_PRETTY)); \
 		json_object_put(jresponse); \
@@ -288,10 +294,14 @@ static int on_message_headers(struct spv_node_context * spv, const bitcoin_messa
 	}
 	
 	///< @todo use a background thread to upload data
-	upload_to_gstorage(gstorage, msg);
+	UNUSED(upload_to_gstorage);
+	//~ upload_to_gstorage(gstorage, msg);
 	
 	ssize_t height = chain->height;
 	fprintf(stderr, "\e[32m" "current height: %ld" "\e[39m" "\n", (long)height);
+	
+#define DEBUG_BREAK_HEIGHT 193183	// bug locator
+	assert(height != DEBUG_BREAK_HEIGHT);
 	
 	// pull more headers
 	struct bitcoin_message * getheaders_msg = bitcoin_message_new(NULL, 
@@ -307,7 +317,7 @@ static int on_message_headers(struct spv_node_context * spv, const bitcoin_messa
 	uint256_t * hashes = NULL;
 	
 	
-	ssize_t count = blockchain_get_known_hashes(chain, 0, &hashes);
+	ssize_t count = blockchain_get_known_hashes(chain, 100, &hashes);
 	assert(count > 0 && hashes);
 	
 	rc = bitcoin_message_getheaders_set(getheaders, version, count, hashes, NULL);

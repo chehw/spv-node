@@ -25,7 +25,6 @@
  * 
  */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -174,17 +173,18 @@ static inline parse_payload_fn get_payload_parser(enum bitcoin_message_type type
 void bitcoin_message_clear(bitcoin_message_t * msg)
 {
 	if(NULL == msg) return;
-	if(msg->priv) {
+	if(msg->msg_object) {
 		cleanup_message_fn cleanup = get_cleanup_function(msg->msg_type);
-		if(cleanup) cleanup(msg->priv);
-		free(msg->priv);
-		msg->priv = NULL;
+		if(cleanup) cleanup(msg->msg_object);
+		free(msg->msg_object);
+		msg->msg_object = NULL;
 	}
 	
 	if(msg->msg_data) {
 		free(msg->msg_data);
 		msg->msg_data = NULL;
 	}
+	memset(msg->hdr, 0, sizeof(msg->hdr));
 	
 	msg->msg_type = bitcoin_message_type_unknown;
 	return;
@@ -220,24 +220,10 @@ int bitcoin_message_parse(bitcoin_message_t * msg, const struct bitcoin_message_
 	msg->msg_type = type;
 	
 	if(msg_data->length > 0) {
-		switch(type) {
-		case bitcoin_message_type_block: 
-		case bitcoin_message_type_headers:
-			if(type == bitcoin_message_type_block) {
-				msg->priv = bitcoin_message_block_parse(NULL, msg_data->payload, msg_data->length);
-			}else {
-				msg->priv = bitcoin_message_block_headers_parse(NULL, msg_data->payload, msg_data->length);
-			}
-			if(NULL == msg->priv) return-1;
-			return 0;
-		default:
-			break;
-		}
-		
 		parse_payload_fn parser = get_payload_parser(type);
 		if(parser) {
-			msg->priv = parser(NULL, msg_data->payload, msg_data->length);
-			if(NULL == msg->priv) return -1;
+			msg->msg_object = parser(NULL, msg_data->payload, msg_data->length);
+			if(NULL == msg->msg_object) return -1;
 		}
 	}
 	return 0;
@@ -252,9 +238,247 @@ void bitcoin_message_cleanup(bitcoin_message_t * msg)
 	return;
 }
 
-ssize_t bitcoin_message_serialize(const struct bitcoin_message * msg, unsigned char ** p_data)
+int bitcoin_message_attach(struct bitcoin_message * msg, uint32_t network_magic, enum bitcoin_message_type type, void * msg_object)
 {
+	assert(msg);
+	if(type <= bitcoin_message_type_unknown || type >= bitcoin_message_types_count) return -1;
+	
+	msg->clear(msg);
+	
+	msg->msg_type = type;
+	msg->msg_object = msg_object;
+	msg->hdr->magic = network_magic;
+	
+	ssize_t cb_payload = bitcoin_message_serialize(msg, NULL);
+	if(cb_payload <= 0) return -1;
 	return 0;
 }
 
+enum bitcoin_message_type bitcoin_message_detech(struct bitcoin_message * msg, void ** p_object)
+{
+	assert(msg);
+	if(NULL == msg->clear) msg->clear = bitcoin_message_clear;
+	
+	void * msg_object = msg->msg_object;
+	enum bitcoin_message_type type = msg->msg_type;
+	
+	msg->msg_object = NULL;
+	msg->clear(msg);
+	
+	if(p_object) {
+		*p_object = msg_object;
+		return type;
+	}
+	
+	// auto cleanup
+	if(msg_object) {
+		cleanup_message_fn cleanup = get_cleanup_function(type);
+		if(cleanup) cleanup(msg_object);
+		free(msg_object);
+		msg_object = NULL;
+	}
+	return type;
+}
 
+bitcoin_message_t * bitcoin_message_new(bitcoin_message_t * msg, uint32_t magic, enum bitcoin_message_type type, void * user_data)
+{
+	if(NULL == msg) { msg = calloc(1, sizeof(*msg)); assert(msg); }
+	else memset(msg, 0, sizeof(*msg));
+	
+	msg->user_data = user_data;
+	msg->parse = bitcoin_message_parse;
+	msg->attach = bitcoin_message_attach;
+	msg->detach = bitcoin_message_detech;
+	msg->clear = bitcoin_message_clear;
+	
+	msg->msg_type = type;
+	if(type <= bitcoin_message_type_unknown || type >= bitcoin_message_types_count) return msg; // an empty context
+	
+	const char * sz_type = bitcoin_message_type_to_string(type);
+	assert(sz_type);
+	
+	struct bitcoin_message_header * hdr = msg->hdr;
+	hdr->magic = magic;
+	strncpy(hdr->command, sz_type, sizeof(hdr->command));
+	
+	void * msg_object = NULL;
+	switch(type) {
+	case bitcoin_message_type_version:    
+		msg_object = calloc(1, sizeof(struct bitcoin_message_version)); 
+		break;
+	case bitcoin_message_type_verack:     
+		break;
+	case bitcoin_message_type_addr:       
+		msg_object = calloc(1, sizeof(struct bitcoin_message_addr)); 
+		break;
+	case bitcoin_message_type_inv:        
+		msg_object = calloc(1, sizeof(struct bitcoin_message_inv)); 
+		break;
+	case bitcoin_message_type_getdata:    
+		msg_object = calloc(1, sizeof(struct bitcoin_message_getdata)); 
+		break;
+	case bitcoin_message_type_notfound:   
+		msg_object = calloc(1, sizeof(struct bitcoin_message_notfound)); 
+		break;
+	case bitcoin_message_type_getblocks:  
+		msg_object = calloc(1, sizeof(struct bitcoin_message_getblocks)); 
+		break;
+	case bitcoin_message_type_getheaders: 
+		msg_object = calloc(1, sizeof(struct bitcoin_message_getheaders)); 
+		break;
+	case bitcoin_message_type_tx:         
+		msg_object = calloc(1, sizeof(bitcoin_message_tx_t)); 
+		break;
+	case bitcoin_message_type_block:      
+		msg_object = calloc(1, sizeof(bitcoin_message_block_t)); 
+		break;
+	case bitcoin_message_type_headers:    
+		msg_object = calloc(1, sizeof(struct bitcoin_message_block_headers)); 
+		break;
+	
+	case bitcoin_message_type_getaddr:    
+	case bitcoin_message_type_mempool:
+	case bitcoin_message_type_checkorder:
+	case bitcoin_message_type_submitorder:
+	case bitcoin_message_type_reply:
+	case bitcoin_message_type_ping:
+	case bitcoin_message_type_pong:
+	case bitcoin_message_type_reject:
+	case bitcoin_message_type_filterload:
+	case bitcoin_message_type_filteradd:
+	case bitcoin_message_type_filterclear:
+	case bitcoin_message_type_merkleblock:
+	case bitcoin_message_type_alert:
+	case bitcoin_message_type_sendheaders:
+	case bitcoin_message_type_feefilter:
+	case bitcoin_message_type_sendcmpct:
+	case bitcoin_message_type_cmpctblock:
+	case bitcoin_message_type_getblocktxn:
+	case bitcoin_message_type_blocktxn:
+	default:
+		break;
+	}
+	
+	msg->msg_object = msg_object;
+	return msg;
+}
+
+static ssize_t message_object_serialize(enum bitcoin_message_type type, void * msg_object, unsigned char ** p_payload)
+{
+	ssize_t cb_payload = 0;
+	switch(type) {
+	case bitcoin_message_type_version:    
+		cb_payload = bitcoin_message_version_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_verack:     
+		break;
+	case bitcoin_message_type_addr:       
+		cb_payload = bitcoin_message_addr_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_inv:        
+		cb_payload = bitcoin_message_inv_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_getdata:    
+		cb_payload = bitcoin_message_getdata_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_notfound:   
+		cb_payload = bitcoin_message_notfound_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_getblocks:  
+		cb_payload = bitcoin_message_getblocks_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_getheaders: 
+		cb_payload = bitcoin_message_getheaders_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_tx:         
+		cb_payload = bitcoin_message_tx_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_block:      
+		cb_payload = bitcoin_message_block_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_headers:    
+		cb_payload = bitcoin_message_block_headers_serialize(msg_object, p_payload);
+		break;
+	case bitcoin_message_type_getaddr:
+	case bitcoin_message_type_mempool:
+	case bitcoin_message_type_checkorder:
+	case bitcoin_message_type_submitorder:
+	case bitcoin_message_type_reply:
+	case bitcoin_message_type_ping:
+	case bitcoin_message_type_pong:
+	case bitcoin_message_type_reject:
+	case bitcoin_message_type_filterload:
+	case bitcoin_message_type_filteradd:
+	case bitcoin_message_type_filterclear:
+	case bitcoin_message_type_merkleblock:
+	case bitcoin_message_type_alert:
+	case bitcoin_message_type_sendheaders:
+	case bitcoin_message_type_feefilter:
+	case bitcoin_message_type_sendcmpct:
+	case bitcoin_message_type_cmpctblock:
+	case bitcoin_message_type_getblocktxn:
+	case bitcoin_message_type_blocktxn:
+	default:
+		break;
+	}
+	return cb_payload;
+}
+
+ssize_t bitcoin_message_serialize(struct bitcoin_message * msg, unsigned char ** p_data)
+{
+#define EMPTY_PAYLOAD_CHECKSUM (0xE2E0F65D)
+	assert(msg);
+	if(NULL == msg->msg_object) return -1;
+	if(msg->msg_type <= bitcoin_message_type_unknown || msg->msg_type >= bitcoin_message_types_count) return -1;
+	
+	ssize_t total_size = 0;
+	const char * sz_type = bitcoin_message_type_to_string(msg->msg_type);
+	assert(sz_type);
+	
+	struct bitcoin_message_header * hdr = msg->hdr;
+	if(!hdr->command[0]) strncpy(hdr->command, sz_type, sizeof(hdr->command));
+	assert(0 == strcmp(hdr->command, sz_type));
+	
+	unsigned char * payload = NULL;
+	ssize_t cb_payload = 0;
+	
+	if(NULL == msg->msg_data) {
+		cb_payload = message_object_serialize(msg->msg_type, msg->msg_object, &payload);
+		if(cb_payload < 0) goto label_error;
+		
+		struct bitcoin_message_header * msg_data = calloc(1, sizeof(struct bitcoin_message_header) + cb_payload);
+		assert(msg_data);
+		
+		memcpy(msg_data, hdr, sizeof(*hdr));
+		msg_data->length = cb_payload;
+		
+		if(cb_payload > 0) {
+			assert(payload);
+			unsigned char hash[32];
+			hash256(payload, cb_payload, hash);
+			memcpy(&msg_data->checksum, hash, 4);
+			memcpy(msg_data->payload, payload, cb_payload);
+		}else {
+			msg_data->checksum = EMPTY_PAYLOAD_CHECKSUM;
+		}
+		msg->msg_data = msg_data;
+		if(payload) free(payload);
+	}
+	
+	total_size = sizeof(*hdr) + cb_payload;
+	if(NULL == p_data) return total_size;
+	
+	void * data = *p_data;
+	if(NULL == data) {
+		data = malloc(total_size);
+		assert(data);
+		*p_data = data;
+	}
+	memcpy(data, msg->msg_data, total_size);
+	return total_size;
+label_error:
+	if(payload) free(payload);
+	return -1;
+
+#undef EMPTY_PAYLOAD_CHECKSUM
+}

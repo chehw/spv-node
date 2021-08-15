@@ -1,5 +1,5 @@
 /*
- * bitcoin_message_tx.c
+ * spv_node_app.c
  * 
  * Copyright 2021 chehw <hongwei.che@gmail.com>
  * 
@@ -31,33 +31,30 @@
 #include <string.h>
 #include <assert.h>
 
-#include "bitcoin-message.h"
-#include "satoshi-types.h"
+#include <signal.h>
+#include <errno.h>
 
-bitcoin_message_tx_t * bitcoin_message_tx_parse(bitcoin_message_tx_t * msg, const unsigned char * payload, size_t length)
+#include "spv-node.h"
+
+void on_signal(int sig);
+int main(int argc, char **argv)
 {
-	if(NULL == msg) msg = calloc(1, sizeof(*msg));
-	assert(msg);
+	signal(SIGINT, on_signal);
+	signal(SIGUSR1, on_signal);
 	
-	ssize_t cb_msg = satoshi_tx_parse(msg, length, payload);
-	if(cb_msg != length) {
-		free(msg);
-		msg = NULL;
-	}
-	return msg;
-}
-
-void bitcoin_message_tx_cleanup(bitcoin_message_tx_t * msg)
-{
-	satoshi_tx_cleanup(msg);
-}
-
-ssize_t bitcoin_message_tx_serialize(const bitcoin_message_tx_t * msg, unsigned char ** p_data)
-{
-	return satoshi_tx_serialize(msg, p_data);
-}
-
-void bitcoin_message_tx_dump(const bitcoin_message_tx_t * msg)
-{
-	satoshi_tx_dump(msg);
+	int rc = 0;
+	spv_node_context_t * spv = spv_node_context_init(NULL, NULL);
+	assert(spv);
+	
+	rc = spv_node_parse_args(spv, argc, argv);
+	assert(0 == rc);
+	//~ rc = spv_node_load_config(spv, spv->conf_file);
+	//~ assert(0 == rc);
+	
+	rc = spv_node_run(spv, 0);
+	
+	spv_node_context_cleanup(spv);
+	free(spv);
+	
+	return rc;
 }

@@ -148,7 +148,7 @@ static int on_message_unknown(struct spv_node_context * spv, const bitcoin_messa
 static int on_message_version(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	debug_printf("%s(%p)", __FUNCTION__, in_msg);
-	bitcoin_message_version_dump(in_msg->priv);
+	bitcoin_message_version_dump(in_msg->msg_object);
 	return send_message_verack(spv, in_msg);
 }
 
@@ -170,7 +170,7 @@ static int on_message_addr(struct spv_node_context * spv, const bitcoin_message_
 {
 	assert(spv && in_msg);
 	
-	struct bitcoin_message_addr * msg_addr = in_msg->priv;
+	struct bitcoin_message_addr * msg_addr = in_msg->msg_object;
 	assert(msg_addr);
 	debug_printf("%s(num_addrs=%ld)", __FUNCTION__, (long)msg_addr->count);
 	
@@ -203,7 +203,7 @@ static int on_message_addr(struct spv_node_context * spv, const bitcoin_message_
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	debug_printf("%s(%p)", __FUNCTION__, in_msg);
-	bitcoin_message_inv_dump(in_msg->priv);
+	bitcoin_message_inv_dump(in_msg->msg_object);
 	return 0;
 }
 
@@ -226,7 +226,7 @@ static int on_message_getblocks(struct spv_node_context * spv, const bitcoin_mes
 static int on_message_getheaders(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	debug_printf("%s(%p)", __FUNCTION__, in_msg);
-	bitcoin_message_getheaders_dump(in_msg->priv);
+	bitcoin_message_getheaders_dump(in_msg->msg_object);
 	return 0;
 }
 

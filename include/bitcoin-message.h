@@ -71,21 +71,30 @@ struct bitcoin_message_header
 
 typedef struct bitcoin_message
 {
-	struct bitcoin_message_header * msg_data;
-	enum bitcoin_message_type msg_type;
-	
-	void * priv;
 	void * user_data;
 	
-	int(* parse)(struct bitcoin_message * msg, const struct bitcoin_message_header * hdr, const void * payload, size_t length);
-	ssize_t (* serialize)(const struct bitcoin_message * msg, unsigned char ** p_data);
+	struct bitcoin_message_header * msg_data;	// raw_data or serialized payload
+	enum bitcoin_message_type msg_type;
+	
+	struct bitcoin_message_header hdr[1];
+	void * msg_object;
+	
+	int (* parse)(struct bitcoin_message * msg, const struct bitcoin_message_header * hdr, const void * payload, size_t length);
+	
+	int (* attach)(struct bitcoin_message * msg, uint32_t network_magic, enum bitcoin_message_type msg_type, void * msg_object);
+	enum bitcoin_message_type (* detach)(struct bitcoin_message * msg, void ** p_msg_object);
+
 	void (* clear)(struct bitcoin_message * msg);
 }bitcoin_message_t;
 
-bitcoin_message_t * bitcoin_message_init(bitcoin_message_t * msg, const struct bitcoin_message_header * hdr, void * user_data);
+bitcoin_message_t * bitcoin_message_new(bitcoin_message_t * msg, uint32_t network_magic, enum bitcoin_message_type type, void * user_data);
 void bitcoin_message_cleanup(bitcoin_message_t * msg);
 int bitcoin_message_parse(bitcoin_message_t * msg, const struct bitcoin_message_header * hdr, const void * payload, size_t length);
 void bitcoin_message_clear(bitcoin_message_t * msg);
+
+ssize_t bitcoin_message_serialize(struct bitcoin_message * msg, unsigned char ** p_data);
+#define bitcoin_message_get_object(msg) (msg)->msg_object
+#define bitcoin_message_free(msg) do { if(msg) { bitcoin_message_cleanup(msg); free(msg); } } while(0)
 
 
 /******************************************
@@ -111,14 +120,15 @@ struct bitcoin_network_address
 ******************************************/
 enum bitcoin_inventory_type
 {
-	bitcoin_inventory_type_error = 0,
-	bitcoin_inventory_type_msg_tx = 1,
-	bitcoin_inventory_type_msg_filtered_block = 2,
-	bitcoin_inventory_type_msg_cmpct_block = 3,
+	bitcoin_inventory_type_error              = 0,
+	bitcoin_inventory_type_msg_tx             = 1,
+	bitcoin_inventory_type_msg_block          = 2,
+	bitcoin_inventory_type_msg_filtered_block = 3,
+	bitcoin_inventory_type_msg_cmpct_block    = 4,
 	
-	bitcoin_inventory_type_msg_witness_flag = 0x40000000,
-	bitcoin_inventory_type_msg_witness_tx = 0x40000001,
-	bitcoin_inventory_type_msg_witness_block = 0x40000002,
+	bitcoin_inventory_type_msg_witness_flag   = 0x40000000,
+	bitcoin_inventory_type_msg_witness_tx     = 0x40000001,
+	bitcoin_inventory_type_msg_witness_block  = 0x40000002,
 	bitcoin_inventory_type_msg_witness_filtered_witness_block = 0x40000003,
 	
 	bitcoin_inventory_type_size = UINT32_MAX
@@ -137,7 +147,7 @@ enum bitcoin_message_service_type
 {
 	bitcoin_message_service_type_node_network = 1,	// full node
 	bitcoin_message_service_type_node_getutxo = 2,	// bip 0064
-	bitcoin_message_service_type_node_bloom = 4,	// bip 0111
+	bitcoin_message_service_type_node_bloom   = 4,	// bip 0111
 	bitcoin_message_service_type_node_witness = 8, 	// bip 0144
 	bitcoin_message_service_type_node_network_limited = 1024, // bip 0159
 	

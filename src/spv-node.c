@@ -76,7 +76,7 @@ static json_object * generate_default_config(void)
 	return jconfig;
 }
 
-static int spv_node_parse_args(spv_node_context_t * spv, int argc, char ** argv)
+int spv_node_parse_args(spv_node_context_t * spv, int argc, char ** argv)
 {
 	static struct option options[] = {
 		{ "conf", required_argument, 0, 'c' },
@@ -128,27 +128,7 @@ static int spv_node_parse_args(spv_node_context_t * spv, int argc, char ** argv)
 	return spv_node_load_config(spv, jconfig);
 }
 
-int main(int argc, char **argv)
-{
-	signal(SIGINT, on_signal);
-	signal(SIGUSR1, on_signal);
-	
-	int rc = 0;
-	spv_node_context_t * spv = spv_node_context_init(NULL, NULL);
-	assert(spv);
-	
-	rc = spv_node_parse_args(spv, argc, argv);
-	assert(0 == rc);
-	//~ rc = spv_node_load_config(spv, spv->conf_file);
-	//~ assert(0 == rc);
-	
-	rc = spv_node_run(spv);
-	
-	spv_node_context_cleanup(spv);
-	free(spv);
-	
-	return rc;
-}
+
 
 /**************************************************
  * message handlers
@@ -205,6 +185,11 @@ static int on_read(struct pollfd * pfd, void * user_data)
 			struct bitcoin_message_header * msg_hdr = (struct bitcoin_message_header * )p_start;
 			if((p_start + sizeof(*msg_hdr) + msg_hdr->length) > p_end) break;
 			
+			if(msg_hdr->magic != spv->magic) {
+				fprintf(stderr, "\e[31m" "[FATAL ERROR]: invalid network magic" "\e[39m" "\n");
+				rc = -1;
+				break;
+			}
 			bitcoin_message_cleanup(msg);
 			rc = bitcoin_message_parse(msg, msg_hdr, msg_hdr->payload, msg_hdr->length);
 			if(rc) break;
@@ -218,7 +203,7 @@ static int on_read(struct pollfd * pfd, void * user_data)
 		in_buf->length = p_end - p_start;
 	}
 	
-	if(spv->out_buf->length > 0) {
+	if(0 == rc && spv->out_buf->length > 0) {
 		spv->pfd->events |= POLLOUT;
 	}
 	
@@ -345,6 +330,26 @@ static int add_message_version(spv_node_context_t * spv, int protocol_version)
 	return 0;
 }
 
+static int spv_node_send_message(spv_node_context_t * spv, bitcoin_message_t * msg)
+{
+
+	ssize_t cb_payload = 0;
+	cb_payload = bitcoin_message_serialize(msg, NULL);
+	if(cb_payload <= 0) return -1;
+	
+	int rc = 0;
+	long length = 0;
+	pthread_mutex_lock(&spv->out_mutex);
+	rc = auto_buffer_push(spv->out_buf, msg->msg_data, cb_payload);
+	length = spv->out_buf->length;
+	pthread_mutex_unlock(&spv->out_mutex);
+	
+	(void)(length);	// unused
+	debug_printf("%s(): outbuf_length: %ld", __FUNCTION__, length);
+	
+	return rc;
+}
+
 spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user_data)
 {
 	if(NULL == spv) spv = calloc(1, sizeof(*spv));
@@ -354,15 +359,17 @@ spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user
 	spv->user_data = user_data;
 	spv->max_retries = 5;
 	
-	pthread_mutex_init(&spv->mutex, NULL);
+	pthread_mutex_init(&spv->in_mutex, NULL);
+	pthread_mutex_init(&spv->out_mutex, NULL);
 	auto_buffer_init(spv->in_buf, 0);
 	auto_buffer_init(spv->out_buf, 0);
-	
+
 	avl_tree_t * tree = avl_tree_init(spv->addrs_list, spv);
 	tree->on_free_data = free;
 	
 	// set default msg_handler_callbacks
 	memcpy(spv->msg_callbacks, s_spv_node_callbacks, sizeof(spv->msg_callbacks));
+	spv->send_message = spv_node_send_message;
 	
 	// disable some handlers and use local implementation
 	//~ spv->msg_callbacks[bitcoin_message_type_version] = NULL;
@@ -384,7 +391,8 @@ void spv_node_context_cleanup(spv_node_context_t * spv)
 	
 	avl_tree_cleanup(spv->addrs_list);
 	
-	pthread_mutex_destroy(&spv->mutex);
+	pthread_mutex_destroy(&spv->in_mutex);
+	pthread_mutex_destroy(&spv->out_mutex);
 	return;
 }
 
@@ -429,7 +437,7 @@ int spv_node_load_config(spv_node_context_t * spv, json_object * jconfig)
 	return 0;
 }
 
-int spv_node_run(spv_node_context_t * spv)
+int spv_node_run(spv_node_context_t * spv, int async_mode)
 {
 	assert(spv && spv->host && spv->port);
 	int rc = 0;

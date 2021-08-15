@@ -8,6 +8,8 @@ LINKER="gcc -std=gnu99 -D_DEFAULT_SOURCE -D_GNU_SOURCE "
 CFLAGS=" -Wall -I../include -I../include/crypto -I../utils "
 LIBS=" -lm -lpthread -ljson-c -lgnutls "
 
+CFLAGS+=" -D_DEBUG "
+
 RET=0
 echo "build '${target}' ..."
 case "$target" in
@@ -35,6 +37,17 @@ case "$target" in
 			-o oauth_jwt-test \
 			oauth_jwt-test.c ../utils/base64.c \
 			${LIBS}
+		RET=$?
+		;;
+		
+	bitcoin-message|test_bitcoin-messages|bitcoin_message_*)
+		${LINKER} -g ${CFLAGS} \
+			-o test_bitcoin-messages test_bitcoin-messages.c \
+			../src/spv-node.c ../src/spv_node_message_handlers.c \
+			../src/bitcoin-message.c ../src/bitcoin-messages/*.c \
+			../src/base/*.c \
+			../utils/*.c \
+			${LIBS} -lgnutls -lgmp -lcurl -lsecp256k1
 		RET=$?
 		;;
 	*)

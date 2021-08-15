@@ -332,6 +332,7 @@ typedef struct satoshi_tx
 ssize_t satoshi_tx_parse(satoshi_tx_t * tx, ssize_t length, const void * payload);
 void satoshi_tx_cleanup(satoshi_tx_t * tx);
 ssize_t satoshi_tx_serialize(const satoshi_tx_t * tx, unsigned char ** p_data);
+void satoshi_tx_dump(const satoshi_tx_t * tx);
 
 struct satoshi_block_header
 {
@@ -355,7 +356,7 @@ typedef struct satoshi_block
 ssize_t satoshi_block_parse(satoshi_block_t * block, ssize_t length, const void * payload);
 void satoshi_block_cleanup(satoshi_block_t * block);
 ssize_t satoshi_block_serialize(const satoshi_block_t * block, unsigned char ** p_data);
-
+void satoshi_block_dump(const satoshi_block_t * block);
 
 
 #ifdef __cplusplus

@@ -42,7 +42,7 @@ enum bitcoin_message_type	// command
 	bitcoin_message_type_filterload,
 	bitcoin_message_type_filteradd,
 	bitcoin_message_type_filterclear,
-	bitcoin_message_type_merkle_block,
+	bitcoin_message_type_merkleblock,
 	bitcoin_message_type_alert,
 	bitcoin_message_type_sendheaders,
 	bitcoin_message_type_feefilter,
@@ -237,7 +237,8 @@ struct bitcoin_message_getblocks
 };
 struct bitcoin_message_getblocks * bitcoin_message_getblocks_parse(struct bitcoin_message_getblocks * msg, const unsigned char * payload, size_t length);
 void bitcoin_message_getblocks_cleanup(struct bitcoin_message_getblocks * msg);
-
+ssize_t bitcoin_message_getblocks_serialize(const struct bitcoin_message_getblocks * msg, unsigned char ** p_data);
+void bitcoin_message_getblocks_dump(const struct bitcoin_message_getblocks * msg);
 
 /******************************************
  * bitcoin_message_getheaders
@@ -258,9 +259,19 @@ void bitcoin_message_getheaders_dump(const struct bitcoin_message_getheaders * m
  * bitcoin_message_tx_t
 ******************************************/
 typedef struct satoshi_tx bitcoin_message_tx_t;
-#define bitcoin_message_tx_parse(msg, payload, length) satoshi_tx_parse(msg, length, payload)
-#define bitcoin_message_tx_cleanup(msg) satoshi_tx_cleanup(msg)
+bitcoin_message_tx_t * bitcoin_message_tx_parse(bitcoin_message_tx_t * msg, const unsigned char * payload, size_t length);
+void bitcoin_message_tx_cleanup(bitcoin_message_tx_t * msg);
+ssize_t bitcoin_message_tx_serialize(const bitcoin_message_tx_t * msg, unsigned char ** p_data);
+void bitcoin_message_tx_dump(const bitcoin_message_tx_t * msg);
 
+/******************************************
+ * bitcoin_message_block_t
+******************************************/
+typedef struct satoshi_block bitcoin_message_block_t;
+bitcoin_message_block_t * bitcoin_message_block_parse(bitcoin_message_block_t * msg, const unsigned char * payload, size_t length);
+void bitcoin_message_block_cleanup(bitcoin_message_block_t * msg);
+ssize_t bitcoin_message_block_serialize(const bitcoin_message_block_t * msg, unsigned char ** p_data);
+void bitcoin_message_block_dump(const bitcoin_message_block_t * msg);
 
 #ifdef __cplusplus
 }

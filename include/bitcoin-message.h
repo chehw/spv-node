@@ -273,6 +273,30 @@ void bitcoin_message_block_cleanup(bitcoin_message_block_t * msg);
 ssize_t bitcoin_message_block_serialize(const bitcoin_message_block_t * msg, unsigned char ** p_data);
 void bitcoin_message_block_dump(const bitcoin_message_block_t * msg);
 
+/******************************************
+ * struct bitcoin_message_block_headers
+******************************************/
+struct bitcoin_message_block_header
+{
+	struct satoshi_block_header hdr;
+	ssize_t txn_count;
+};
+struct bitcoin_message_block_headers
+{
+	ssize_t count;
+	/*
+	 * Note that the block headers in this packet include a transaction count 
+	 * (a var_int, so there can be more than 81 bytes per header) 
+	 * as opposed to the block headers that are hashed by miners.
+	*/
+	struct bitcoin_message_block_header * hdrs;
+};
+struct bitcoin_message_block_headers * bitcoin_message_block_headers_parse(struct bitcoin_message_block_headers * msg, 
+	const unsigned char * payload, size_t length);
+void bitcoin_message_block_headers_cleanup(struct bitcoin_message_block_headers * msg);
+ssize_t bitcoin_message_block_headers_serialize(const struct bitcoin_message_block_headers * msg, unsigned char ** p_data);
+void bitcoin_message_block_headers_dump(const struct bitcoin_message_block_headers * msg);
+
 #ifdef __cplusplus
 }
 #endif

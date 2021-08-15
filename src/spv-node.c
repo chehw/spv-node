@@ -198,7 +198,6 @@ static int on_read(struct pollfd * pfd, void * user_data)
 		auto_buffer_push(in_buf, data, length);
 		if(in_buf->length < sizeof(struct bitcoin_message_header)) continue;
 		
-		
 		const unsigned char * p_start = auto_buffer_get_data(in_buf);
 		const unsigned char * p_end = p_start + in_buf->length;
 		
@@ -240,7 +239,7 @@ static int on_write(struct pollfd * pfd, void * user_data)
 	ssize_t length = out_buf->length;
 	
 	while(length > 0) {
-		printf("%s(length=%ld)\n", __FUNCTION__, (long)length); 
+		debug_printf("%s(length=%ld)", __FUNCTION__, (long)length); 
 		cb = write(pfd->fd, data, length);
 		if(cb <= 0) {
 			if(length < 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) break;

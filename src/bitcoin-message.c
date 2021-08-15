@@ -104,7 +104,7 @@ cleanup_message_fn s_cleanup_message_func[bitcoin_message_types_count] = {
 	[bitcoin_message_type_getheaders] =  (cleanup_message_fn)bitcoin_message_getheaders_cleanup,
 	[bitcoin_message_type_tx] =          (cleanup_message_fn)bitcoin_message_tx_cleanup,
 	[bitcoin_message_type_block] =       (cleanup_message_fn)bitcoin_message_block_cleanup,
-	[bitcoin_message_type_headers] =     NULL,
+	[bitcoin_message_type_headers] =     (cleanup_message_fn)bitcoin_message_block_headers_cleanup,
 	[bitcoin_message_type_getaddr] =     NULL,
 	[bitcoin_message_type_mempool] =     NULL,
 	[bitcoin_message_type_checkorder] =  NULL,
@@ -144,7 +144,7 @@ static parse_payload_fn s_payload_parsers[bitcoin_message_types_count] =
 	[bitcoin_message_type_getheaders] =  (parse_payload_fn)bitcoin_message_getheaders_parse,
 	[bitcoin_message_type_tx] =          (parse_payload_fn)bitcoin_message_tx_parse,
 	[bitcoin_message_type_block] =       (parse_payload_fn)bitcoin_message_block_parse,
-	[bitcoin_message_type_headers] =     NULL,
+	[bitcoin_message_type_headers] =     (parse_payload_fn)bitcoin_message_block_headers_parse,
 	[bitcoin_message_type_getaddr] =     NULL,
 	[bitcoin_message_type_mempool] =     NULL,
 	[bitcoin_message_type_checkorder] =  NULL,
@@ -220,6 +220,20 @@ int bitcoin_message_parse(bitcoin_message_t * msg, const struct bitcoin_message_
 	msg->msg_type = type;
 	
 	if(msg_data->length > 0) {
+		switch(type) {
+		case bitcoin_message_type_block: 
+		case bitcoin_message_type_headers:
+			if(type == bitcoin_message_type_block) {
+				msg->priv = bitcoin_message_block_parse(NULL, msg_data->payload, msg_data->length);
+			}else {
+				msg->priv = bitcoin_message_block_headers_parse(NULL, msg_data->payload, msg_data->length);
+			}
+			if(NULL == msg->priv) return-1;
+			return 0;
+		default:
+			break;
+		}
+		
 		parse_payload_fn parser = get_payload_parser(type);
 		if(parser) {
 			msg->priv = parser(NULL, msg_data->payload, msg_data->length);

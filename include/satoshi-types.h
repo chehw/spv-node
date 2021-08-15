@@ -344,6 +344,7 @@ struct satoshi_block_header
 	uint32_t nonce;
 	uint8_t txn_count[0];	// place-holder
 }__attribute__((packed));
+int satoshi_block_header_verify(const struct satoshi_block_header * hdr, uint256_t * p_hash /* (nullable) output of the block_hash */);
 
 typedef struct satoshi_block
 {

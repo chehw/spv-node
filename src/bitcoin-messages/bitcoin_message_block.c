@@ -34,7 +34,9 @@
 #include "bitcoin-message.h"
 #include "satoshi-types.h"
 
-bitcoin_message_block_t * bitcoin_message_block_parse(bitcoin_message_block_t * msg, const unsigned char * payload, size_t length)
+bitcoin_message_block_t * bitcoin_message_block_parse(bitcoin_message_block_t * msg, 
+	const unsigned char * payload, 
+	size_t length)
 {
 	if(length < sizeof(struct satoshi_block_header)) return NULL;
 	
@@ -54,7 +56,7 @@ void bitcoin_message_block_cleanup(bitcoin_message_block_t * msg)
 	satoshi_block_cleanup(msg);
 }
 
-ssize_t bitcoin_message_block_serialize(bitcoin_message_block_t * msg, unsigned char ** p_data)
+ssize_t bitcoin_message_block_serialize(const bitcoin_message_block_t * msg, unsigned char ** p_data)
 {
 	return satoshi_block_serialize(msg, p_data);
 }

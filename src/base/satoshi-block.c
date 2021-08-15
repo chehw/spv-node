@@ -54,6 +54,29 @@
 	} while(0)
 #endif
 
+int satoshi_block_header_verify(const struct satoshi_block_header * hdr, uint256_t * p_hash)
+{
+	/**
+	 * Calculate block_hash and check if it matches the current difficulty.
+	 * The hash must be less than or equal to the target which set in the block.hdr (hdr.bits).
+	 * 
+	 * 'hdr.bits' should be checked when building the block_chain,
+	 *  and 'hdr.bits' must match the global difficulty which be recalculated every 2016 blocks.
+	 */
+	 
+	uint256_t hash[1];
+	if(NULL == p_hash) p_hash = hash;
+	
+	hash256(hdr, sizeof(struct satoshi_block_header), (uint8_t *)p_hash);
+	int compare_diff = uint256_compare_with_compact(hash, (compact_uint256_t *)&hdr->bits);
+	//~ assert(compare_diff <= 0);
+	
+	if(compare_diff > 0) return -1;
+	
+	///@ todo:  calc_time_diff(hdr->time, get_network_mean_time()); 
+	
+	return 0;
+}
 
 ssize_t satoshi_block_parse(satoshi_block_t * block, ssize_t length, const void * payload)
 {
@@ -70,19 +93,10 @@ ssize_t satoshi_block_parse(satoshi_block_t * block, ssize_t length, const void 
 	memcpy(&block->hdr, p, sizeof(struct satoshi_block_header));
 	p += sizeof(struct satoshi_block_header);
 	
-	/**
-	 * Calculate block_hash and check if it matches the current difficulty.
-	 * The hash must be less than or equal to the target which set in the block.hdr (hdr.bits).
-	 * 
-	 * 'hdr.bits' should be checked when building the block_chain,
-	 *  and 'hdr.bits' must match the global difficulty which be recalculated every 2016 blocks.
-	 */
-	hash256(payload, sizeof(struct satoshi_block_header), (uint8_t *)&block->hash);
-	int compare_diff = uint256_compare_with_compact(&block->hash, (compact_uint256_t *)&block->hdr.bits);
-	if(compare_diff > 0) {
+	int rc = satoshi_block_header_verify(&block->hdr, &block->hash);
+	if(rc != 0) {
 		message_parser_error_handler("Difficulty invalid (greater than 0x%.8d).", block->hdr.bits);
 	}
-	assert(compare_diff <= 0);
 	
 	if(length == sizeof(struct satoshi_block_header)) // parse block header only
 	{

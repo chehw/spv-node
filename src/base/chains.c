@@ -306,6 +306,56 @@ static struct block_info * blockchain_add_inheritances(blockchain_t * chain,
 	return orphans;
 }
 
+ssize_t blockchain_get_lastest(blockchain_t * chain, uint256_t * hash, struct satoshi_block_header * hdr)
+{
+	pthread_mutex_lock(&chain->mutex);
+	ssize_t height = chain->height;
+	if(height >= 0) {
+		blockchain_heir_t * heir = &chain->heirs[height];
+		if(hash) memcpy(hash, heir->hash, sizeof(*hash));
+		if(hdr) memcpy(hdr, heir->hdr, sizeof(*hdr));
+	}
+	pthread_mutex_unlock(&chain->mutex);
+	return height;
+}
+
+ssize_t blockchain_get_known_hashes(blockchain_t * chain, size_t max_hashes, uint256_t ** p_hashes)
+{
+	if(max_hashes == 0 || max_hashes > 2000) max_hashes = 2000;
+	
+	pthread_mutex_lock(&chain->mutex);
+	ssize_t height = chain->height;
+	uint256_t * hashes = *p_hashes;
+	if(NULL == hashes) {
+		hashes = calloc(max_hashes, sizeof(*hashes));
+		assert(hashes);
+		*p_hashes = hashes;
+	}
+	
+	/*
+	 * Reference: https://en.bitcoin.it/wiki/Protocol_documentation#getblocks
+	 * 
+	 * block locator object; 
+	 * newest back to genesis block (dense to start, but then sparse)
+	*/
+	ssize_t count = 1;
+	int step = 1;
+	for(size_t i = 0; i < max_hashes && height >= 0; ++i, ++count) {
+		blockchain_heir_t * heir = &chain->heirs[height];
+		memcpy(&hashes[i], heir->hash, sizeof(*hashes));
+		if(height == 0) break;
+		
+		if(i >= 10) step *= 2;
+		height -= step;
+		if(height < 0) height = 0;
+	}
+	pthread_mutex_unlock(&chain->mutex);
+	
+	return count;
+}
+
+
+
 /*
 static int on_remove_block(struct blockchain * chain, const uint256_t * block_hash, const int height, void * user_data);
 static int on_add_block(struct blockchain * chain, const uint256_t * block_hash, const int height, void * user_data);
@@ -327,6 +377,9 @@ blockchain_t * blockchain_init(blockchain_t * chain,
 	chain->find = blockchain_find;
 	chain->get = blockchain_get;
 	chain->get_height = blockchain_get_height;
+	
+	
+	pthread_mutex_init(&chain->mutex, NULL);
 	
 	int rc = blockchain_resize(chain, 0);
 	assert(0 == rc);
@@ -361,6 +414,9 @@ void blockchain_reset(blockchain_t * chain)
 	return;
 }
 
+static void no_free(void * data)
+{
+}
 void blockchain_cleanup(blockchain_t * chain)
 {
 	if(NULL == chain) return;
@@ -370,13 +426,18 @@ void blockchain_cleanup(blockchain_t * chain)
 	chain->heirs = NULL;
 	chain->max_size = 0;
 	chain->height = -1;
+	
+	tdestroy(chain->search_root, no_free);
+	chain->search_root = NULL;
+	
+	pthread_mutex_destroy(&chain->mutex);
 	return;
 }
 static const blockchain_heir_t * blockchain_find(blockchain_t * chain, const uint256_t * hash)
 {
 	void ** p_node = tfind(hash, &chain->search_root, blockchain_heir_compare);
+
 	if(p_node) return *p_node;
-	
 	return NULL;
 }
 
@@ -412,17 +473,32 @@ static void update_first_child_cumulative_difficulty(block_info_t * child, compa
 	return;
 }
 
+#define AUTO_UNLOCK_MUTEX_PTR __attribute__((cleanup(auto_unlock_mutex_ptr)))
+static void auto_unlock_mutex_ptr(void * ptr)
+{
+	pthread_mutex_t * mutex = *(pthread_mutex_t **)ptr;
+	if(mutex) {
+		pthread_mutex_unlock(mutex);
+		*(pthread_mutex_t **)ptr = NULL;
+	}
+}
 static int blockchain_add(blockchain_t * block_chain, 
 	const uint256_t * block_hash, 
 	const struct satoshi_block_header * hdr)
 {
-	assert(block_hash && hdr);
+	assert(hdr);
+	debug_printf("\n========== hdr.nonce: %d ==========", (int)hdr->nonce);
 	
-	printf("\n========== hdr.nonce: %d ==========\n", (int)hdr->nonce);
-	
+	AUTO_UNLOCK_MUTEX_PTR pthread_mutex_t * p_mutex = &block_chain->mutex;
+	pthread_mutex_lock(p_mutex);
+
 	unsigned char hash[32];
 	hash256(hdr, sizeof(*hdr), hash);
-	assert(0 == memcmp(hash, block_hash, sizeof(uint256_t)));
+	
+	if(NULL == block_hash) block_hash = (uint256_t *)hash;
+	else {
+		assert(0 == memcmp(hash, block_hash, sizeof(uint256_t)));
+	}
 	
 	active_chain_list_t * list = block_chain->candidates_list;
 	const blockchain_heir_t * heir = NULL;

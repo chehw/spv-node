@@ -85,6 +85,29 @@ static int custom_init(spv_node_context_t * spv)
 	return 0; 
 }
 
+static int bitcoin_message_getheaders_set(struct bitcoin_message_getheaders * getheaders,
+	uint32_t version,
+	ssize_t hash_count,
+	const uint256_t * known_hashes,
+	const uint256_t * hash_stop)
+{
+	if(hash_count <= 0 || hash_count > 2000) return -1;
+
+	assert(known_hashes);
+	
+	uint256_t * hashes = realloc(getheaders->hashes, sizeof(uint256_t) * hash_count);
+	assert(hashes);
+	getheaders->hashes = hashes;
+	
+	getheaders->version = version;
+	getheaders->hash_count = hash_count;
+	memcpy(hashes, known_hashes, sizeof(uint256_t) * hash_count);
+	if(hash_stop) memcpy(&getheaders->hash_stop, hash_stop, sizeof(*hash_stop));
+	
+	return 0;
+}
+
+
 static int on_message_verack(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
 {
 	// send test data when 'verack' msg received
@@ -100,23 +123,21 @@ static int on_message_verack(struct spv_node_context * spv, const bitcoin_messag
 	uint32_t version = spv->peer_version;
 	if(0 == version || version > spv->protocol_version) version = spv->protocol_version;
 	
-	size_t hash_count = 1;
-	uint256_t hashes[hash_count];
-	memset(hashes, 0, sizeof(hashes[0]) * hash_count);
-	void * p_hash = hashes;
-	ssize_t cb = hex2bin("6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000", -1, &p_hash);
-	assert(cb == 32);
-
-	getheaders->version = version;
-	getheaders->hash_count = hash_count;
-	getheaders->hashes = hashes;
-	if(spv->send_message) spv->send_message(spv, getheaders_msg);
 	
-	getheaders->hashes = NULL;
-	getheaders->hash_count = 0;
-
+	uint256_t * hashes = NULL;
+	blockchain_t * chain = spv->chain;
+	assert(chain && chain->add);
+	
+	ssize_t count = blockchain_get_known_hashes(chain, 0, &hashes);
+	assert(count > 0 && hashes);
+	
+	int rc = bitcoin_message_getheaders_set(getheaders, version, count, hashes, NULL);
+	if(0 == rc) {
+		if(spv->send_message) spv->send_message(spv, getheaders_msg);
+	}
+	free(hashes);
 	bitcoin_message_free(getheaders_msg);
-	return 0;
+	return rc;
 }
 
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
@@ -204,9 +225,42 @@ static int on_message_headers(struct spv_node_context * spv, const bitcoin_messa
 {
 	struct bitcoin_message_block_headers * msg = bitcoin_message_get_object(in_msg);
 	bitcoin_message_block_headers_dump(msg);
+	if(msg->count <= 0) return -1;
 	
-//	exit(0);
-	return 0;
+	blockchain_t * chain = spv->chain;
+	assert(chain && chain->add);
+	int rc = 0;
+	for(int i = 0; i < msg->count; ++i) {
+		rc = chain->add(chain, NULL, &msg->hdrs[i].hdr);
+		if(rc) break;
+	}
+	ssize_t height = chain->height;
+	fprintf(stderr, "\e[32m" "current height: %ld" "\e[39m" "\n", (long)height);
+	
+	// pull more headers
+	struct bitcoin_message * getheaders_msg = bitcoin_message_new(NULL, 
+		in_msg->msg_data->magic, 
+		bitcoin_message_type_getheaders, 
+		spv);
+	struct bitcoin_message_getheaders * getheaders = bitcoin_message_get_object(getheaders_msg);
+	assert(getheaders);
+	
+	uint32_t version = spv->peer_version;
+	if(0 == version || version > spv->protocol_version) version = spv->protocol_version;
+	
+	uint256_t * hashes = NULL;
+	
+	
+	ssize_t count = blockchain_get_known_hashes(chain, 0, &hashes);
+	assert(count > 0 && hashes);
+	
+	rc = bitcoin_message_getheaders_set(getheaders, version, count, hashes, NULL);
+	if(0 == rc) {
+		if(spv->send_message) spv->send_message(spv, getheaders_msg);
+	}
+	free(hashes);
+	bitcoin_message_free(getheaders_msg);
+	return rc;
 }
 
 

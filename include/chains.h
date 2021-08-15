@@ -7,6 +7,7 @@ extern "C" {
 #endif
 #include <stdint.h>
 #include "satoshi-types.h"
+#include <pthread.h>
 
 struct block_info;
 
@@ -164,6 +165,7 @@ typedef struct blockchain
 	ssize_t max_size;
 	ssize_t height;
 	
+	pthread_mutex_t mutex;
 	void * search_root;
 	void * user_data;
 	struct active_chain_list candidates_list[1];
@@ -198,11 +200,15 @@ blockchain_t * blockchain_init(blockchain_t * chain,
 	void * user_data);
 void blockchain_cleanup(blockchain_t * chain);
 
+ssize_t blockchain_get_lastest(blockchain_t * chain, uint256_t * hash, struct satoshi_block_header * hdr);
+ssize_t blockchain_get_known_hashes(blockchain_t * chain, size_t max_hashes, uint256_t ** p_hashes);
+
+#define blockchain_lock(chain)   pthread_mutex_lock(&(chain)->mutex)
+#define blockchain_unlock(chain) pthread_mutex_unlock(&(chain)->mutex)
 
 block_info_t * block_info_new(const uint256_t * hash, struct satoshi_block_header * hdr);
 int block_info_add_child(block_info_t * parent, block_info_t * child);
 void block_info_free(block_info_t * info);
-
 
 
 

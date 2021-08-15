@@ -376,6 +376,11 @@ spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user
 	//~ spv->msg_callbacks[bitcoin_message_type_version] = NULL;
 	//~ spv->msg_callbacks[bitcoin_message_type_ping] = NULL;
 	
+	blockchain_t * chain = blockchain_init(spv->chain, 
+		NULL, NULL, // mainet default
+		spv);
+	assert(chain && chain == spv->chain);
+	
 	return spv;
 }
 
@@ -391,6 +396,8 @@ void spv_node_context_cleanup(spv_node_context_t * spv)
 	}
 	
 	avl_tree_cleanup(spv->addrs_list);
+	
+	blockchain_cleanup(spv->chain);
 	
 	pthread_mutex_destroy(&spv->in_mutex);
 	pthread_mutex_destroy(&spv->out_mutex);

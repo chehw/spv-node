@@ -168,7 +168,7 @@ static int on_read(struct pollfd * pfd, void * user_data)
 		length = read(pfd->fd, data, sizeof(data));
 		if(length <= 0) {
 			if(length < 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) {
-				fprintf(stderr, "[INFO]: would block\n");
+			//	fprintf(stderr, "[INFO]: would block\n");
 				break;
 			}
 			perror("read");
@@ -332,7 +332,6 @@ static int add_message_version(spv_node_context_t * spv, int protocol_version)
 
 static int spv_node_send_message(spv_node_context_t * spv, bitcoin_message_t * msg)
 {
-
 	ssize_t cb_payload = 0;
 	cb_payload = bitcoin_message_serialize(msg, NULL);
 	if(cb_payload <= 0) return -1;
@@ -345,8 +344,9 @@ static int spv_node_send_message(spv_node_context_t * spv, bitcoin_message_t * m
 	pthread_mutex_unlock(&spv->out_mutex);
 	
 	(void)(length);	// unused
-	debug_printf("%s(): outbuf_length: %ld", __FUNCTION__, length);
 	
+	fprintf(stderr, "==== %s() ====\n", __FUNCTION__);
+	bitcoin_message_header_dump(msg->msg_data);
 	return rc;
 }
 
@@ -358,6 +358,7 @@ spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user
 	assert(spv);
 	spv->user_data = user_data;
 	spv->max_retries = 5;
+	spv->protocol_version = 70015;
 	
 	pthread_mutex_init(&spv->in_mutex, NULL);
 	pthread_mutex_init(&spv->out_mutex, NULL);

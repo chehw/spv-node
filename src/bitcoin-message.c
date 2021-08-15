@@ -482,3 +482,15 @@ label_error:
 
 #undef EMPTY_PAYLOAD_CHECKSUM
 }
+
+void bitcoin_message_header_dump(const struct bitcoin_message_header * hdr)
+{
+#ifdef _DEBUG
+	printf("==== %s() ====\n", __FUNCTION__);
+	printf("magic: 0x%.8x\n", hdr->magic);
+	printf("command: %.*s\n", 12, hdr->command);
+	printf("length: %u\n", hdr->length);
+	printf("checksum: 0x%.8x\n", hdr->checksum);
+#endif
+	return;
+}

@@ -35,10 +35,15 @@
 #include "satoshi-types.h"
 #include "utils.h"
 
-static int custom_init(spv_node_context_t * spv);
+#include <signal.h>
 
+static int custom_init(spv_node_context_t * spv);
+void on_signal(int sig);
 int main(int argc, char **argv)
 {
+	signal(SIGINT, on_signal);
+	signal(SIGUSR1, on_signal);
+	
 	int rc = 0;
 	spv_node_context_t * spv = spv_node_context_init(NULL, NULL);
 	rc = spv_node_parse_args(spv, argc, argv);
@@ -53,6 +58,7 @@ int main(int argc, char **argv)
 	return rc;
 }
 
+static int on_message_verack(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_getdata(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_notfound(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
@@ -65,17 +71,52 @@ static int custom_init(spv_node_context_t * spv)
 {
 	spv_node_message_callback_fn * callbacks = spv->msg_callbacks;
 	assert(callbacks);
-	
+
+	callbacks[bitcoin_message_type_verack]     = on_message_verack;
 	callbacks[bitcoin_message_type_inv]        = on_message_inv;
 	callbacks[bitcoin_message_type_getdata]    = on_message_getdata;
-	callbacks[bitcoin_message_type_notfound]    = on_message_notfound;
+	callbacks[bitcoin_message_type_notfound]   = on_message_notfound;
 	callbacks[bitcoin_message_type_getblocks]  = on_message_getblocks;
 	callbacks[bitcoin_message_type_getheaders] = on_message_getheaders;
 	callbacks[bitcoin_message_type_tx]         = on_message_tx;
 	callbacks[bitcoin_message_type_block]      = on_message_block;
 	callbacks[bitcoin_message_type_headers]    = on_message_headers;
-	
+
 	return 0; 
+}
+
+static int on_message_verack(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
+{
+	// send test data when 'verack' msg received
+	bitcoin_message_header_dump(in_msg->msg_data);
+	
+	struct bitcoin_message * getheaders_msg = bitcoin_message_new(NULL, 
+		in_msg->msg_data->magic, 
+		bitcoin_message_type_getheaders, 
+		spv);
+	struct bitcoin_message_getheaders * getheaders = bitcoin_message_get_object(getheaders_msg);
+	assert(getheaders);
+	
+	uint32_t version = spv->peer_version;
+	if(0 == version || version > spv->protocol_version) version = spv->protocol_version;
+	
+	size_t hash_count = 1;
+	uint256_t hashes[hash_count];
+	memset(hashes, 0, sizeof(hashes[0]) * hash_count);
+	void * p_hash = hashes;
+	ssize_t cb = hex2bin("6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000", -1, &p_hash);
+	assert(cb == 32);
+
+	getheaders->version = version;
+	getheaders->hash_count = hash_count;
+	getheaders->hashes = hashes;
+	if(spv->send_message) spv->send_message(spv, getheaders_msg);
+	
+	getheaders->hashes = NULL;
+	getheaders->hash_count = 0;
+
+	bitcoin_message_free(getheaders_msg);
+	return 0;
 }
 
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg)
@@ -146,7 +187,7 @@ static int on_message_tx(struct spv_node_context * spv, const bitcoin_message_t 
 	bitcoin_message_tx_t * msg = bitcoin_message_get_object(in_msg);
 	bitcoin_message_tx_dump(msg);
 	
-	exit(0);
+//	exit(0);
 	return 0;
 }
 
@@ -155,7 +196,7 @@ static int on_message_block(struct spv_node_context * spv, const bitcoin_message
 	bitcoin_message_block_t * msg = bitcoin_message_get_object(in_msg);
 	bitcoin_message_block_dump(msg);
 	
-	exit(0);
+//	exit(0);
 	return 0;
 }
 
@@ -164,7 +205,7 @@ static int on_message_headers(struct spv_node_context * spv, const bitcoin_messa
 	struct bitcoin_message_block_headers * msg = bitcoin_message_get_object(in_msg);
 	bitcoin_message_block_headers_dump(msg);
 	
-	exit(0);
+//	exit(0);
 	return 0;
 }
 

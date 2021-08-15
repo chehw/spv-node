@@ -40,7 +40,7 @@ case "$target" in
 		RET=$?
 		;;
 		
-	bitcoin-message|test_bitcoin-messages|bitcoin_message_*)
+	bitcoin-message|test_bitcoin-messages|bitcoin_message_*|spv-node|spv_node_message_handlers)
 		${LINKER} -g ${CFLAGS} \
 			-o test_bitcoin-messages test_bitcoin-messages.c \
 			../src/spv-node.c ../src/spv_node_message_handlers.c \

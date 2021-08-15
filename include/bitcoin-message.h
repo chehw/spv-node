@@ -68,6 +68,7 @@ struct bitcoin_message_header
 	uint32_t checksum;
 	uint8_t payload[0];
 }__attribute__((packed));
+void bitcoin_message_header_dump(const struct bitcoin_message_header * msg_hdr);
 
 typedef struct bitcoin_message
 {

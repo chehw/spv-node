@@ -57,6 +57,9 @@ struct spv_node_context
 	
 	spv_node_message_callback_fn msg_callbacks[bitcoin_message_types_count]; // callbacks for parsed in_msgs
 	int (* send_message)(struct spv_node_context * spv, struct bitcoin_message * out_msg); // broadcast messages
+	
+	uint32_t protocol_version;	// supported version
+	uint32_t peer_version;		// remote node's protocol version
 };
 spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user_data);
 void spv_node_context_cleanup(spv_node_context_t * spv);

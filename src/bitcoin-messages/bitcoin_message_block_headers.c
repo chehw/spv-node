@@ -40,7 +40,7 @@ struct bitcoin_message_block_headers * bitcoin_message_block_headers_parse(
 	struct bitcoin_message_block_headers * msg, 
 	const unsigned char * payload, size_t length)
 {
-	assert(msg && payload && length > 0);
+	assert(payload && length > 0);
 	const unsigned char * p = payload;
 	const unsigned char * p_end = p + length;
 	

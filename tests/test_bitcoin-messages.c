@@ -82,6 +82,7 @@ static void dump_active_chain(const active_chain_t * chain, int index)
 		stack[top++] = node;
 	}
 	
+	free(stack);
 	fclose(fp);
 	return;
 }
@@ -200,6 +201,8 @@ static ssize_t load_block_headers(blockchain_t * chain, const char * block_heade
 	
 #undef BATCH_SIZE
 	printf("latest height: %ld\n", chain->height);
+	dump_line("hash: ", &chain->heirs[chain->height].hash, 32);
+	dump_line("hdr : ", chain->heirs[chain->height].hdr, 80);
 	
 	return chain->height;
 }

@@ -52,6 +52,13 @@ case "$target" in
 			${LIBS} -lgnutls -lgmp -lcurl -lsecp256k1
 		RET=$?
 		;;
+	test_uint256*|compact_int)
+		${LINKER} -g ${CFLAGS} \
+		-o test_uint256 test_uint256_algorithms.c \
+		../src/base/compact_int.c \
+		../utils/utils.c \
+		-lm -lgmp -lgnutls
+		;;
 	*)
 		echo "build nothing"
 		exit 1

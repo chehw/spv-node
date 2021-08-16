@@ -104,7 +104,7 @@ typedef struct uint256
 void uint256_reverse(uint256_t * u256);
 ssize_t uint256_from_string(uint256_t * u256, int from_little_endian, const char * hex_string, ssize_t length);
 char * uint256_to_string(const uint256_t * u256, int to_little_endian, char ** p_hex);
-
+void uint256_add(uint256_t * c, const uint256_t *a, const uint256_t *b);
 
 /**
  * @defgroup compact_int
@@ -150,8 +150,13 @@ union compact_uint256
 typedef union compact_uint256 compact_uint256_t;
 compact_uint256_t uint256_to_compact(const uint256_t * target);
 uint256_t compact_to_uint256(const compact_uint256_t * cint);
+compact_uint256_t compact_uint256_complement(const compact_uint256_t target);
+compact_uint256_t compact_uint256_add(const compact_uint256_t a, const compact_uint256_t b);
+double compact_uint256_to_bdiff(const compact_uint256_t * cint);
+double compact_uint256_to_pdiff(const compact_uint256_t * cint);
+#define compact_uint256_to_difficulty compact_uint256_to_bdiff
 
-#define compact_uint256_zero 	((compact_uint256_t){.bits = 0, })
+//~ #define compact_uint256_zero 	((compact_uint256_t){.bits = 0, })
 #define compact_uint256_NaN 	((compact_uint256_t){.bits = 0xffffffff, })	// Not a Number
 
 #define uint256_NaN	((uint256_t){.val = {						\

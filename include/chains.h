@@ -51,9 +51,14 @@ typedef struct block_info
 	void (* hdr_free)(void *);	// set to NULL if no need to free
 	
 	int height;		// the index in the blockchain, -1 means not attached to any chains
-//	double cumulative_difficulty;
 
-	compact_uint256_t cumulative_difficulty;	// use compact_uint256 to represent cumulative difficulty.
+	/**
+	 *  sice the precision of compact int is limited, 
+	 * when the cumulative difficulty exceeds a certain value (2^^72), 
+	 * it cannot be able to accumulate correctly.
+	 */
+	double cumulative_difficulty;
+	// compact_uint256_t cumulative_difficulty;	// use compact_uint256 to represent cumulative difficulty.
 	
 	struct block_info * parent;	// there can be only one parent for each block
 	struct block_info * first_child;	// the first child will belong to the longest-chain
@@ -147,7 +152,14 @@ typedef struct blockchain_heir
 	uint64_t timestamp;	// add support for BIP0113 (Median time-past as endpoint for lock-time calculations)
 	
 	uint32_t bits;		// current target
-	compact_uint256_t cumulative_difficulty;
+	
+	/**
+	 *  sice the precision of compact int is limited, 
+	 * when the cumulative difficulty exceeds a certain value (2^^72), 
+	 * it cannot be able to accumulate correctly.
+	 */
+	double cumulative_difficulty;
+	//~ compact_uint256_t cumulative_difficulty;
 	
 	struct satoshi_block_header hdr[1];
 }blockchain_heir_t;

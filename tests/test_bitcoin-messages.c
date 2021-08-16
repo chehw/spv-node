@@ -36,12 +36,79 @@
 #include "utils.h"
 
 #include <signal.h>
+#include <search.h>
 
 #include "gcloud/google-oauth2.h"
 #include "gcloud/gcloud-storage.h"
 
+#define DEBUG_BREAK_HEIGHT 193183	// bug locator
+
 static int custom_init(spv_node_context_t * spv);
 void on_signal(int sig);
+
+static const char * s_block_headers_file = "data/block_headers.dat";
+static FILE * s_block_headers_fp;
+static ssize_t load_block_headers(blockchain_t * chain, const char * block_headers_file);
+static void save_block_headers(const struct bitcoin_message_block_headers * msg_hdrs);
+
+static void dump_active_chain(const active_chain_t * chain, int index)
+{
+	char logfile[200] = "";
+	snprintf(logfile, sizeof(logfile), "log/chain_%.3d.dat", index);
+	
+	FILE * fp = fopen(logfile, "w+");
+
+#define MAX_STACK_DEPTH	(100 * 10000)
+	const struct block_info ** stack = calloc(MAX_STACK_DEPTH, sizeof(*stack));
+	assert(stack);
+	ssize_t top = 0;
+	
+	const struct block_info * node = chain->head;
+	const struct block_info * sibling = node->next_sibling;
+
+	// DFS_traverse
+	while(sibling) stack[top++] = sibling;
+	stack[top++] = node;
+	while(top > 0)
+	{
+		node = stack[--top];
+		dump2(fp, &node->hash, 32);
+		fprintf(fp, "\n");
+		
+		node = node->first_child;
+		if(NULL == node) continue;
+		sibling = node->next_sibling;
+		while(sibling) stack[top++] = sibling;
+		stack[top++] = node;
+	}
+	
+	fclose(fp);
+	return;
+}
+
+static void dump_chains_info(blockchain_t * chain)
+{
+	system("mkdir -p log");
+	fprintf(stderr, "height: %ld\n", (long)chain->height);
+	fprintf(stderr, "num_active_chains: %d\n", (int)chain->candidates_list->count);
+
+	for(int i = 0; i < chain->candidates_list->count; ++i)
+	{
+		fprintf(stderr, "  -- active chain %d\n", i);
+		active_chain_t * active = chain->candidates_list->chains[i];
+		dump_active_chain(active, i);
+	}
+
+	FILE * fp = fopen("log/heirs.dat", "wb+");
+	assert(fp);
+
+	ssize_t count = fwrite(chain->heirs, sizeof(*chain->heirs), chain->height + 1, fp);
+	assert(count == (chain->height + 1));
+	fclose(fp);
+
+	return;
+}
+
 int main(int argc, char **argv)
 {
 	signal(SIGINT, on_signal);
@@ -63,19 +130,81 @@ int main(int argc, char **argv)
 	rc = spv_node_parse_args(spv, argc, argv);
 	assert(0 == rc);
 	
+	ssize_t height = load_block_headers(spv->chain, s_block_headers_file);
+	
+	if(height == DEBUG_BREAK_HEIGHT) {
+		dump_chains_info(spv->chain);
+		exit(0);
+	}
+	if(height == 0) {
+		fprintf(stderr, "[info]: block_headers_file not found. generating ...\n");
+	}
 	rc = custom_init(spv);
 	assert(0 == rc);
 	
 	rc = spv_node_run(spv, 0);
 	
-	ssize_t height = blockchain_get_lastest(spv->chain, NULL, NULL);
+	height = blockchain_get_latest(spv->chain, NULL, NULL);
 	fprintf(stderr, "[INFO]: spv_node_run()=%d, lastest block: %ld\n",
 		rc, height);
 	
 	spv_node_context_cleanup(spv);
 	free(spv);
+	
+	if(s_block_headers_fp) fclose(s_block_headers_fp);
+	s_block_headers_fp = NULL;
 	return rc;
 }
+
+static void save_block_headers(const struct bitcoin_message_block_headers * msg)
+{
+	FILE * fp = s_block_headers_fp;
+	if(NULL == fp) {
+		fp = fopen(s_block_headers_file, "wb+");
+		assert(fp);
+		
+		s_block_headers_fp = fp;
+	}
+	
+	size_t count = 0;
+	for(int i = 0; i < msg->count; ++i) {
+		size_t n = fwrite(&msg->hdrs[i], sizeof(struct satoshi_block_header), 1, fp);
+		assert(n == 1);
+		count += n;
+	}
+	fflush(fp);
+	return;
+}
+
+static ssize_t load_block_headers(blockchain_t * chain, const char * block_headers_file)
+{
+	FILE * fp = fopen(block_headers_file, "rb");
+	if(NULL == fp) return 0;
+	
+#define BATCH_SIZE (2000)
+	size_t total = 0;
+	size_t num_hdrs = 0;
+	struct satoshi_block_header * hdrs = calloc(BATCH_SIZE, sizeof(*hdrs));
+	assert(hdrs);
+	
+	while((num_hdrs = fread(hdrs, sizeof(*hdrs), BATCH_SIZE, fp)) > 0)
+	{
+		for(int i = 0; i < num_hdrs; ++i) {
+			chain->add(chain, NULL, &hdrs[i]);
+		}
+		
+		total += num_hdrs;
+	}
+	free(hdrs);
+	fclose(fp);
+	
+#undef BATCH_SIZE
+	printf("latest height: %ld\n", chain->height);
+	
+	return chain->height;
+}
+
+
 
 static int on_message_verack(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
 static int on_message_inv(struct spv_node_context * spv, const bitcoin_message_t * in_msg);
@@ -288,10 +417,13 @@ static int on_message_headers(struct spv_node_context * spv, const bitcoin_messa
 	blockchain_t * chain = spv->chain;
 	assert(chain && chain->add);
 	int rc = 0;
+	
 	for(int i = 0; i < msg->count; ++i) {
 		rc = chain->add(chain, NULL, &msg->hdrs[i].hdr);
 		if(rc) break;
 	}
+	
+	save_block_headers(msg);
 	
 	///< @todo use a background thread to upload data
 	UNUSED(upload_to_gstorage);
@@ -300,7 +432,7 @@ static int on_message_headers(struct spv_node_context * spv, const bitcoin_messa
 	ssize_t height = chain->height;
 	fprintf(stderr, "\e[32m" "current height: %ld" "\e[39m" "\n", (long)height);
 	
-#define DEBUG_BREAK_HEIGHT 193183	// bug locator
+
 	assert(height != DEBUG_BREAK_HEIGHT);
 	
 	// pull more headers

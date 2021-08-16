@@ -306,7 +306,7 @@ static struct block_info * blockchain_add_inheritances(blockchain_t * chain,
 	return orphans;
 }
 
-ssize_t blockchain_get_lastest(blockchain_t * chain, uint256_t * hash, struct satoshi_block_header * hdr)
+ssize_t blockchain_get_latest(blockchain_t * chain, uint256_t * hash, struct satoshi_block_header * hdr)
 {
 	pthread_mutex_lock(&chain->mutex);
 	ssize_t height = chain->height;
@@ -508,7 +508,14 @@ static int blockchain_add(blockchain_t * block_chain,
 	
 	// Rule 0. check if it is already on the chain
 	heir = block_chain->find(block_chain, block_hash);
-	if(heir) return -1;	// already on the BLOCKCHAIN
+	if(heir) {
+		///<@ DEBUG  
+		fprintf(stderr, "\e[31m" "[DEBUG]: %s(%d): dup hash found: ", __FILE__, __LINE__);
+		dump2(stderr, heir->hash, 32); fprintf(stderr, "\e[39m" "\n");
+		//~ exit(1);
+		///@>
+		return -1;	// already on the BLOCKCHAIN
+	}
 	
 	orphan = active_chain_list_find(list, block_hash);
 	if(orphan){

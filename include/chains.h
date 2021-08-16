@@ -200,7 +200,7 @@ blockchain_t * blockchain_init(blockchain_t * chain,
 	void * user_data);
 void blockchain_cleanup(blockchain_t * chain);
 
-ssize_t blockchain_get_lastest(blockchain_t * chain, uint256_t * hash, struct satoshi_block_header * hdr);
+ssize_t blockchain_get_latest(blockchain_t * chain, uint256_t * hash, struct satoshi_block_header * hdr);
 ssize_t blockchain_get_known_hashes(blockchain_t * chain, size_t max_hashes, uint256_t ** p_hashes);
 
 #define blockchain_lock(chain)   pthread_mutex_lock(&(chain)->mutex)

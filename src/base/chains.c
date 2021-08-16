@@ -102,7 +102,7 @@
  */
 int block_info_update_cumulative_difficulty(
 	block_info_t * node, // current node
-	compact_uint256_t cumulative_difficulty,	// parent's cumulative_difficulty
+	double cumulative_difficulty,	// parent's cumulative_difficulty
 	block_info_t ** p_longest_offspring			// the child who currently at the end of the longest-chain  
 );
 int block_info_declare_inheritance(block_info_t * heir);
@@ -221,14 +221,10 @@ static inline blockchain_heir_t * add_heir(blockchain_t * chain,
 	memcpy(heir->hash, &child->hash, sizeof(uint256_t));
 	heir->bits = child->hdr->bits;
 	heir->timestamp = child->hdr->timestamp;
-	compact_uint256_t difficulty = compact_uint256_complement(*(compact_uint256_t *)&heir->bits);
-	heir->cumulative_difficulty = compact_uint256_add(difficulty, parent->cumulative_difficulty);
 	
-	// verify difficulty
-	assert(0 == compact_uint256_compare(
-		&heir->cumulative_difficulty, 
-		&child->cumulative_difficulty));
-		
+	double difficulty = compact_uint256_to_bdiff((compact_uint256_t *)&heir->bits);
+	heir->cumulative_difficulty	= parent->cumulative_difficulty + difficulty;
+	
 	memcpy(heir->hdr, child->hdr, sizeof(*child->hdr));
 		
 	blockchain_heir_t ** p_node = tsearch(heir, &chain->search_root, blockchain_heir_compare);
@@ -385,12 +381,11 @@ blockchain_t * blockchain_init(blockchain_t * chain,
 	assert(0 == rc);
 	
 	memcpy(chain->heirs[0].hash, genesis_block_hash, sizeof(uint256_t));
-	
-	if(genesis_block_hdr) {
+	if(genesis_block_hdr) 
+	{
 		chain->heirs[0].timestamp = genesis_block_hdr->timestamp;
 		chain->heirs[0].bits = genesis_block_hdr->bits;
-		chain->heirs[0].cumulative_difficulty = 
-			compact_uint256_complement(*(compact_uint256_t *)&genesis_block_hdr->bits);
+		chain->heirs[0].cumulative_difficulty = compact_uint256_to_bdiff((compact_uint256_t *)&genesis_block_hdr->bits);
 	}
 	
 	tsearch(&chain->heirs[0], // add genesis block to the search-tree
@@ -460,14 +455,13 @@ static inline active_chain_t * get_current_chain(block_info_t * parent)
 
 static int abandon_siblings(block_info_t * successor, active_chain_list_t * list);
 
-static void update_first_child_cumulative_difficulty(block_info_t * child, compact_uint256_t cumulative_difficulty)
+static void update_first_child_cumulative_difficulty(block_info_t * child, double cumulative_difficulty)
 {
 	while(child)
 	{
-		compact_uint256_t difficulty = compact_uint256_complement(*(compact_uint256_t *)&child->hdr->bits);
-		cumulative_difficulty = compact_uint256_add(difficulty, cumulative_difficulty);
+		double difficulty = compact_uint256_to_bdiff((compact_uint256_t *)&child->hdr->bits);
+		cumulative_difficulty += difficulty;
 		child->cumulative_difficulty = cumulative_difficulty;
-		
 		child = child->first_child;
 	}
 	return;
@@ -489,6 +483,7 @@ static int blockchain_add(blockchain_t * block_chain,
 	assert(hdr);
 	debug_printf("\n========== hdr.nonce: %d ==========", (int)hdr->nonce);
 	
+	
 	AUTO_UNLOCK_MUTEX_PTR pthread_mutex_t * p_mutex = &block_chain->mutex;
 	pthread_mutex_lock(p_mutex);
 
@@ -499,12 +494,35 @@ static int blockchain_add(blockchain_t * block_chain,
 	else {
 		assert(0 == memcmp(hash, block_hash, sizeof(uint256_t)));
 	}
+	///<@ DEBUG  
+	dump_line("hash: ", hash, 32);
+	static int next_break_point = 0;
+	if(1)
+	{
+		void * debug_hash = NULL;
+		ssize_t cb = hex2bin("04ff2e5108d9a0eeb128efc39d1a81b620e6650f1d7fcdf99d03000000000000",
+			64, &debug_hash);
+		assert(cb == 32);
+		if(0 == memcmp(debug_hash, hash, 32)) {
+			//  add break point here
+			dump_line("[DEBUG]: hash=", hash, 32);
+			++next_break_point;
+		}
+		free(debug_hash);
+	}
+	if(next_break_point) 
+	{
+		++next_break_point;
+		dump_line("[DEBUG]: hash=", hash, 32);
+	}
+	///@>
 	
 	active_chain_list_t * list = block_chain->candidates_list;
 	const blockchain_heir_t * heir = NULL;
 	block_info_t * orphan = NULL;
 	active_chain_t * chain = NULL;
 	block_info_t * longest_end = NULL;
+	block_info_t * parent = NULL;
 	
 	// Rule 0. check if it is already on the chain
 	heir = block_chain->find(block_chain, block_hash);
@@ -516,7 +534,7 @@ static int blockchain_add(blockchain_t * block_chain,
 		///@>
 		return -1;	// already on the BLOCKCHAIN
 	}
-	
+
 	orphan = active_chain_list_find(list, block_hash);
 	if(orphan){
 		// check chain's sub-rule
@@ -547,7 +565,7 @@ static int blockchain_add(blockchain_t * block_chain,
 			child = child->next_sibling;
 		}
 		
-		block_info_update_cumulative_difficulty(orphan, compact_uint256_zero, NULL);
+		block_info_update_cumulative_difficulty(orphan, 0.0, NULL);
 		
 		// delete the chain from the list.
 		chain->head->first_child = NULL;
@@ -566,7 +584,7 @@ static int blockchain_add(blockchain_t * block_chain,
 	// Rule I. find parent in the active_chain_list
 	
 	printf("\e[32m" "--> [%s]: " "\e[39m" "\n", "Rule I");
-	block_info_t * parent = active_chain_list_find(list, orphan->hdr->prev_hash);
+	parent = active_chain_list_find(list, orphan->hdr->prev_hash);
 	if(parent) { // Rule II.
 		
 		printf("\e[32m" "--> [%s]: " "\e[39m" "\n", "Rule II");
@@ -596,9 +614,7 @@ static int blockchain_add(blockchain_t * block_chain,
 		debug_printf("== new chain: %p", chain);
 		
 		// find the longest-end
-		block_info_update_cumulative_difficulty(orphan, 
-			compact_uint256_zero,
-			&chain->longest_end);
+		block_info_update_cumulative_difficulty(orphan, 0.0, &chain->longest_end);
 	}
 	
 	
@@ -614,13 +630,10 @@ static int blockchain_add(blockchain_t * block_chain,
 	update_first_child_cumulative_difficulty(chain->head->first_child, heir->cumulative_difficulty);
 	blockchain_heir_t * current = &block_chain->heirs[block_chain->height];
 	
-	printf("chain->difficulty: 0x%.8x\n", chain->longest_end->cumulative_difficulty.bits);
-	printf("current->max_diff: 0x%.8x\n", current->cumulative_difficulty.bits);
-		
+	dump_line("chain::difficuty   : ", &chain->longest_end->cumulative_difficulty, 32);
+	dump_line("current::difficulty: ", & current->cumulative_difficulty, 32);
 	
-	if(compact_uint256_compare(
-		&chain->longest_end->cumulative_difficulty, 
-		&current->cumulative_difficulty) > 0 ) // win the round. 
+	if(chain->longest_end->cumulative_difficulty > current->cumulative_difficulty) // win the round. 
 	{
 		// replace the current one
 		block_info_t * orphans = blockchain_abandon_inheritances(block_chain, (blockchain_heir_t *)heir);
@@ -857,25 +870,20 @@ void clib_queue_cleanup(struct clib_queue * queue)
 
 int block_info_update_cumulative_difficulty(
 	block_info_t * node, // current node
-	compact_uint256_t cumulative_difficulty,	// parent's cumulative_difficulty
+	double cumulative_difficulty,	// parent's cumulative_difficulty
 	block_info_t ** p_longest_offspring			// the child who currently at the end of the longest-chain  
 )
 {
 	if(NULL == node) return -1;
 	
 	// update current node's cumulative_difficulty
-	compact_uint256_t difficulty = compact_uint256_complement(*(compact_uint256_t *)&node->hdr->bits);
-	node->cumulative_difficulty = compact_uint256_add(difficulty, cumulative_difficulty);
+	double difficulty = compact_uint256_to_difficulty((compact_uint256_t *)&node->hdr->bits);
+	node->cumulative_difficulty = cumulative_difficulty * difficulty;
 	
 	if(p_longest_offspring)	// if need to declare the winner at the same time 
 	{
 		block_info_t * heir = *p_longest_offspring;
-		if(NULL == heir 
-			|| compact_uint256_compare(
-					&node->cumulative_difficulty, 
-					&heir->cumulative_difficulty) > 0
-			)
-		{
+		if(NULL == heir || (node->cumulative_difficulty > heir->cumulative_difficulty)) {
 			*p_longest_offspring = node;
 		}
 	} 
@@ -1142,83 +1150,6 @@ void active_chain_list_cleanup(active_chain_list_t * list)
 }
 
 
-/**
- * Difficulty is a measure of how difficult it is to find a hash below a given target.
- * Each block stores a packed representation (called 'Bits') for its actual target(uint256). 
- * The Bitcoin network uses the following formula to define difficulty:
- * 
- * difficulty_1_target: (compact_int)0x1d00FFFF
- *                      (uint256)0x00000000 FFFF0000 00000000 00000000 00000000 00000000 00000000 00000000
- * current_target:      (compact_int)block_hdr.bits
- *                      (uint256) (convert block_hdr.bits to uint256)
- * 
- * difficulty = difficulty_1_target / current_target
- * 
- * 
- * In order to avoid a large number of floating-point division operations, 
- * we try to use another way (using compact_int) to represent the difficulty, 
- * and made the following definition:
- * 
- * compact_int:        compact_uint256
- * cint_max:    { .bits = 0x20FFFFFF,  .exp = 32, .mantissa = {0xff, 0xff, 0xff} }
- * current_target:      block_hdr.bits
- * 
- * difficulty_cint = compact_int_max - (compact_int)target
- * 
- * To improve precision, we try to keep as many valid bits as possible in mantissa,
- * we define difficulty_cint.mantissa as an unsigned integer,
- * so the highest bit is allowed to be '1'.
- * 
- * DO NOT use 'compact_uint256_compare()' function to 
- * compare (unsigned type)'difficulty' and (signed type)'target' directly,
- * this should not happen within the system, 
- * there are no relevant implementations, the result is undefined.
- * 
- * The 'addition' and 'complement(~, 1's complement)' operation of compact_uint256 are defined as below:
- */
-compact_uint256_t compact_uint256_add(const compact_uint256_t a, const compact_uint256_t b)
-{
-	compact_uint256_t c;	// c = a + b
-	
-	int val_a = a.bits & 0x0FFFFFF;
-	int val_b = b.bits & 0x0FFFFFF;
-	
-	// make a and b same exponent
-	int exp_diff = (int)a.exp - (int)b.exp; 
-	int exp = a.exp;
-	if(exp_diff > 0) {
-		val_b >>= exp_diff * 8;	// bytes to bits
-	}else if(exp_diff < 0) {
-		exp = b.exp;
-		val_a >>= (-exp_diff) * 8;
-	}
-	
-	/*
-	 * Since A and B can only have 24 valid bits at most, and C has 32 bits, 
-	 * it is safe to assign A+B directly to C.
-	 */
-	c.bits = val_a + val_b;
-	
-	// make sure c's mantissa is equal or less than 24 bits
-	if(c.bits & 0xFF000000) { c.bits >>= 8; exp++; }
-	
-	c.exp = exp;
-	return c;
-} 
-
-compact_uint256_t compact_uint256_complement(const compact_uint256_t target)
-{
-	// cint_max:    { .bits = 0x20FFFFFF,  .exp = 32, .mantissa = {0xff, 0xff, 0xff} }
-	compact_uint256_t c;	// c = ~target;
-	uint32_t mantissa = target.bits & 0x0FFFFFF;
-	c.bits = ~mantissa;
-	c.exp = (unsigned char)32 - target.exp; //  target.exp should less than 32 <== sizeof(uint256).
-	
-	return c;
-}
-
-
-
 /************************************
  * utils
  ***********************************/
@@ -1239,9 +1170,8 @@ void block_info_dump_BFS(block_info_t * root)
 	while(queue->length > 0)
 	{
 		block_info_t * node = queue->leave(queue);
-		printf("\t info.id = %p, parent=%p, cumulative_difficulty = 0x%.8x\n", 
-			node, node->parent,
-			node->cumulative_difficulty.bits);
+		printf("\t info.id = %p, parent=%p, ", node, node->parent);
+		dump_line("cumulative_difficulty=", &node->cumulative_difficulty, sizeof(node->cumulative_difficulty));
 		dump_line("hash: ", &node->hash, 32);
 		if(node->hdr) {
 			dump_line("    prev-hash: ", &node->hdr->prev_hash, 32);

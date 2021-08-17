@@ -138,15 +138,17 @@ int main(int argc, char **argv)
 	rc = spv_node_parse_args(spv, argc, argv);
 	assert(0 == rc);
 	
-	ssize_t height = load_block_headers(spv->chain, s_block_headers_file);
+	ssize_t height = 0;
+	//~ ssize_t height = load_block_headers(spv->chain, s_block_headers_file);
 	
-	if(height == DEBUG_BREAK_HEIGHT) {
-		dump_chains_info(spv->chain);
-		exit(0);
-	}
-	if(height == 0) {
-		fprintf(stderr, "[info]: block_headers_file not found. generating ...\n");
-	}
+	//~ if(height == DEBUG_BREAK_HEIGHT) {
+		//~ dump_chains_info(spv->chain);
+		//~ exit(0);
+	//~ }
+	//~ if(height == 0) {
+		//~ fprintf(stderr, "[info]: block_headers_file not found. generating ...\n");
+	//~ }
+
 	rc = custom_init(spv);
 	assert(0 == rc);
 	
@@ -158,6 +160,12 @@ int main(int argc, char **argv)
 	
 	spv_node_context_cleanup(spv);
 	free(spv);
+	
+	gcloud_storage_context_cleanup(gstorage);
+	free(gstorage);
+	
+	google_oauth2_context_cleanup(gauth);
+	free(gauth);
 	
 	if(s_block_headers_fp) fclose(s_block_headers_fp);
 	s_block_headers_fp = NULL;

@@ -231,8 +231,8 @@ static inline double calc_difficulty(const compact_uint256_t * cint, const uint2
 	uint256_t u_target = compact_to_uint256(cint);
 	double difficulty = 1.0;
 	
-	dump_line("one   : ", difficulty_one, 32);
-	dump_line("target: ", &u_target, 32);
+	//~ dump_line("one   : ", difficulty_one, 32);
+	//~ dump_line("target: ", &u_target, 32);
 	
 	mpz_t m_one, m_target;
 	mpz_inits(m_one, m_target, NULL);

@@ -494,28 +494,6 @@ static int blockchain_add(blockchain_t * block_chain,
 	else {
 		assert(0 == memcmp(hash, block_hash, sizeof(uint256_t)));
 	}
-	///<@ DEBUG  
-	dump_line("hash: ", hash, 32);
-	static int next_break_point = 0;
-	if(1)
-	{
-		void * debug_hash = NULL;
-		ssize_t cb = hex2bin("04ff2e5108d9a0eeb128efc39d1a81b620e6650f1d7fcdf99d03000000000000",
-			64, &debug_hash);
-		assert(cb == 32);
-		if(0 == memcmp(debug_hash, hash, 32)) {
-			//  add break point here
-			dump_line("[DEBUG]: hash=", hash, 32);
-			++next_break_point;
-		}
-		free(debug_hash);
-	}
-	if(next_break_point) 
-	{
-		++next_break_point;
-		dump_line("[DEBUG]: hash=", hash, 32);
-	}
-	///@>
 	
 	active_chain_list_t * list = block_chain->candidates_list;
 	const blockchain_heir_t * heir = NULL;
@@ -878,7 +856,7 @@ int block_info_update_cumulative_difficulty(
 	
 	// update current node's cumulative_difficulty
 	double difficulty = compact_uint256_to_difficulty((compact_uint256_t *)&node->hdr->bits);
-	node->cumulative_difficulty = cumulative_difficulty * difficulty;
+	node->cumulative_difficulty = cumulative_difficulty + difficulty;
 	
 	if(p_longest_offspring)	// if need to declare the winner at the same time 
 	{
@@ -1146,6 +1124,8 @@ void active_chain_list_cleanup(active_chain_list_t * list)
 	free(list->chains);
 	list->chains = NULL;
 	list->max_size = 0;
+	
+	tdestroy(list->search_root, free);
 	return;
 }
 

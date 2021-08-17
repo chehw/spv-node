@@ -104,7 +104,7 @@ struct bitcoin_message_version * bitcoin_message_version_parse(struct bitcoin_me
 	
 	size_t cb_user_agent = varstr_size((varstr_t *)p);
 	if(cb_user_agent < 1 || (p + cb_user_agent + sizeof(int32_t) > p_end)) goto label_error;
-	msg->user_agent = malloc(cb_user_agent);
+	msg->user_agent = calloc(cb_user_agent + 1, 1);
 	assert(msg->user_agent);
 	
 	load_data(msg->user_agent, p, cb_user_agent);

@@ -48,8 +48,6 @@ int main(int argc, char **argv)
 	
 	rc = spv_node_parse_args(spv, argc, argv);
 	assert(0 == rc);
-	//~ rc = spv_node_load_config(spv, spv->conf_file);
-	//~ assert(0 == rc);
 	
 	rc = spv_node_run(spv, 0);
 	

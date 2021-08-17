@@ -67,7 +67,11 @@ static void dump_active_chain(const active_chain_t * chain, int index)
 	const struct block_info * sibling = node->next_sibling;
 
 	// DFS_traverse
-	while(sibling) stack[top++] = sibling;
+	while(sibling) {
+		stack[top++] = sibling;
+		sibling = sibling->next_sibling;
+	}
+		
 	stack[top++] = node;
 	while(top > 0)
 	{
@@ -78,7 +82,10 @@ static void dump_active_chain(const active_chain_t * chain, int index)
 		node = node->first_child;
 		if(NULL == node) continue;
 		sibling = node->next_sibling;
-		while(sibling) stack[top++] = sibling;
+		while(sibling) {
+			stack[top++] = sibling;
+			sibling = sibling->next_sibling;
+		}
 		stack[top++] = node;
 	}
 	

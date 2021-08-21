@@ -553,7 +553,7 @@ ssize_t satoshi_txout_serialize(const satoshi_txout_t * txout, unsigned char ** 
 	unsigned char * payload = *p_data;
 	if(NULL == payload)
 	{
-		malloc(cb_payload);
+		payload = malloc(cb_payload);
 		assert(payload);
 		*p_data = payload;
 	}

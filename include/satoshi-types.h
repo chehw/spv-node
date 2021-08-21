@@ -1,5 +1,5 @@
-#ifndef _SATOSHI_TYPES_H_
-#define _SATOSHI_TYPES_H_
+#ifndef CHLIB_SATOSHI_TYPES_H_
+#define CHLIB_SATOSHI_TYPES_H_
 
 #include <stdio.h>
 #include <stdint.h>

@@ -383,6 +383,8 @@ blockchain_t * blockchain_init(blockchain_t * chain,
 	memcpy(chain->heirs[0].hash, genesis_block_hash, sizeof(uint256_t));
 	if(genesis_block_hdr) 
 	{
+		memcpy(chain->heirs[0].hdr, genesis_block_hdr, sizeof(*genesis_block_hdr));
+		
 		chain->heirs[0].timestamp = genesis_block_hdr->timestamp;
 		chain->heirs[0].bits = genesis_block_hdr->bits;
 		chain->heirs[0].cumulative_difficulty = compact_uint256_to_bdiff((compact_uint256_t *)&genesis_block_hdr->bits);

@@ -54,10 +54,21 @@ case "$target" in
 		;;
 	test_uint256*|compact_int)
 		${LINKER} -g ${CFLAGS} \
-		-o test_uint256 test_uint256_algorithms.c \
-		../src/base/compact_int.c \
-		../utils/utils.c \
-		-lm -lgmp -lgnutls
+			-o test_uint256 test_uint256_algorithms.c \
+			../src/base/compact_int.c \
+			../utils/utils.c \
+			-lm -lgmp -lgnutls
+		RET=$?
+		;;
+		
+	block_hdrs-db|test_block_headers_db)
+		${LINKER} -g ${CFLAGS} -I../src \
+			-o test_block_headers_db test_block_headers_db.c \
+			../src/block_hdrs-db.c \
+			../src/base/*.c \
+			../utils/utils.c \
+			-lm -lgmp -lgnutls -ldb -lpthread -lsecp256k1
+		RET=$?
 		;;
 	*)
 		echo "build nothing"

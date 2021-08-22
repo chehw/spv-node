@@ -199,6 +199,8 @@ int bitcoin_message_parse(bitcoin_message_t * msg, const struct bitcoin_message_
 	assert(length >= hdr->length);
 	if(NULL == payload) payload = hdr->payload;
 	
+	fprintf(stderr, "%s(command=%s, length=%u)\n", __FUNCTION__, hdr->command, hdr->length);
+	
 	enum bitcoin_message_type type = bitcoin_message_type_from_string(hdr->command);
 	if(type == bitcoin_message_type_unknown) return -1;
 	
@@ -223,7 +225,7 @@ int bitcoin_message_parse(bitcoin_message_t * msg, const struct bitcoin_message_
 		parse_payload_fn parser = get_payload_parser(type);
 		if(parser) {
 			msg->msg_object = parser(NULL, msg_data->payload, msg_data->length);
-			if(NULL == msg->msg_object) return -1;
+			if(NULL == msg->msg_object) return 0;
 		}
 	}
 	return 0;

@@ -45,7 +45,11 @@ struct bitcoin_message_block_headers * bitcoin_message_block_headers_parse(
 	const unsigned char * p_end = p + length;
 	
 	ssize_t count = varint_get((varint_t *)p); p += varint_size((varint_t *)p);
-	if(count <= 0 || p >= p_end) return NULL;
+	if(count < 0 || p >= p_end) return NULL;
+	
+	if(NULL == msg) msg = calloc(1, sizeof(*msg));
+	assert(msg);
+	if(count == 0) return msg;
 	
 	struct bitcoin_message_block_header * hdrs = calloc(count, sizeof(*hdrs));
 	assert(hdrs);
@@ -64,9 +68,6 @@ struct bitcoin_message_block_headers * bitcoin_message_block_headers_parse(
 		hdrs[i].txn_count = varint_get((varint_t *)p);
 		p += vint_size;
 	}
-	
-	if(NULL == msg) msg = calloc(1, sizeof(*msg));
-	assert(msg);
 	
 	msg->count = count;
 	msg->hdrs = hdrs;

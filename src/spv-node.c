@@ -290,7 +290,7 @@ static int add_message_version(spv_node_context_t * spv, int protocol_version)
 	static const char * user_agent = "/spv-node:0.1.0(protocol=70012)/";
 	ssize_t cb = strlen(user_agent);
 	msg_ver->user_agent = varstr_set(NULL, (const unsigned char *)user_agent, cb);
-	msg_ver->start_height = 1;
+	msg_ver->start_height = spv->chain->height;
 	msg_ver->relay = 1;
 	
 	auto_buffer_t * out_buf = spv->out_buf;

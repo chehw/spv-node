@@ -153,6 +153,7 @@ static int on_message_version(struct spv_node_context * spv, const bitcoin_messa
 	const struct bitcoin_message_version * msg_ver = bitcoin_message_get_object(in_msg);
 	assert(msg_ver);
 	spv->peer_version = msg_ver->version;
+	spv->peer_height = msg_ver->start_height;
 	
 	return send_message_verack(spv, in_msg);
 }

@@ -60,6 +60,7 @@ struct spv_node_context
 	
 	uint32_t protocol_version;	// supported version
 	uint32_t peer_version;		// remote node's protocol version
+	int32_t peer_height;
 };
 spv_node_context_t * spv_node_context_init(spv_node_context_t * spv, void * user_data);
 void spv_node_context_cleanup(spv_node_context_t * spv);

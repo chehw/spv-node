@@ -37,25 +37,6 @@
 #include "utils.h"
 #include <stdint.h>
 
-//~ struct block_header_record
-//~ {
-	//~ uint32_t height;
-	//~ uint32_t txn_count;
-	//~ struct satoshi_block_header hdr;
-	
-	//~ int64_t file_index;
-	//~ int64_t file_offset;
-	
-	//~ int32_t is_orphan;
-//~ }__attribute__((packed));
-
-//~ typedef struct block_headers_db
-//~ {
-	//~ DB_ENV ** p_env;
-	
-	//~ DB * dbp;
-	//~ DB * sdbp_height;
-	
 static int headers_db_open(struct block_headers_db * db);
 static int headers_db_close(struct block_headers_db * db);
 static ssize_t headers_db_get(struct block_headers_db * db, const uint256_t * hash, struct block_header_record * record);
@@ -64,21 +45,11 @@ static ssize_t headers_db_del(struct block_headers_db * db, const uint256_t * ha
 
 static ssize_t headers_db_get_by_height(struct block_headers_db * db, uint32_t height, struct block_header_record ** p_records);
 	
-	//~ DBC * cursorp;
-	
-	//~ /* Pagination */
-	//~ int page_size;
-	//~ int offset;
-	
-	//~ uint256_t * hashes:
-	//~ struct block_header_record * records;
-	
-	//~ ssize_t (* move_to)(struct block_headers_db * db, int height);
-	//~ int (* first)(struct block_headers_db * db);
-	//~ int (* prior)(struct block_headers_db * db);
-	//~ int (* next)(struct block_headers_db * db);
-	//~ int (* last)(struct block_headers_db * db);
-//~ }block_headers_db_t;
+static int headers_db_move_to(struct block_headers_db * db, int height);
+static int headers_db_first(struct block_headers_db * db);
+static int headers_db_prior(struct block_headers_db * db);
+static int headers_db_next(struct block_headers_db * db);
+static int headers_db_last(struct block_headers_db * db);
 
 typedef struct db_private
 {
@@ -202,6 +173,12 @@ block_headers_db_t * block_headers_db_init(block_headers_db_t * db, void * db_en
 	db->del   = headers_db_del;
 	db->get_by_height = headers_db_get_by_height;
 	
+	db->move_to = headers_db_move_to;
+	db->first = headers_db_first;
+	db->prior = headers_db_prior;
+	db->next = headers_db_next;
+	db->last = headers_db_last;
+	
 	assert(db);
 	db_private_t * priv = db_private_new(db, db_env);
 	assert(priv && db->priv == priv);
@@ -231,14 +208,16 @@ static int headers_db_close(struct block_headers_db * db)
 	return -1;
 }
 
-static ssize_t headers_db_get(struct block_headers_db * db, const uint256_t * hash, struct block_header_record * record)
+static ssize_t headers_db_get(struct block_headers_db * db, const uint256_t * _hash, struct block_header_record * record)
 {
 	assert(db && db->priv);
-	assert(hash);
+	assert(_hash);
 	
 	db_private_t * priv = db->priv;
 	DB * dbp = priv->dbp;
 	assert(dbp);
+	
+	uint256_t hash = *_hash;
 	
 	int rc = 0;
 	struct block_header_record record_buffer[1];
@@ -251,8 +230,8 @@ static ssize_t headers_db_get(struct block_headers_db * db, const uint256_t * ha
 	memset(&key, 0, sizeof(key));
 	memset(&value, 0, sizeof(value));
 	
-	key.data = (void *)hash;
-	key.size = sizeof(*hash);
+	key.data = &hash;
+	key.size = sizeof(hash);
 	
 	value.data = record;
 	value.ulen = sizeof(*record);
@@ -268,25 +247,28 @@ static ssize_t headers_db_get(struct block_headers_db * db, const uint256_t * ha
 	return 1;
 }
 
-static ssize_t headers_db_put(struct block_headers_db * db, const uint256_t * hash, const struct block_header_record * record)
+static ssize_t headers_db_put(struct block_headers_db * db, const uint256_t * _hash, const struct block_header_record * _record)
 {
 	assert(db && db->priv);
-	assert(hash && record);
+	assert(_hash && _record);
 	
 	db_private_t * priv = db->priv;
 	DB * dbp = priv->dbp;
 	assert(dbp);
+		
+	uint256_t hash = *_hash;
+	struct block_header_record record = *_record;
 	
 	int rc = 0;
 	DBT key, value;
 	memset(&key, 0, sizeof(key));
 	memset(&value, 0, sizeof(value));
 	
-	key.data = (void *)hash;
-	key.size = sizeof(*hash);
-	
-	value.data = (void *)record;
-	value.size = sizeof(*record);
+	key.data = &hash;
+	key.size = sizeof(hash);
+
+	value.data = &record;
+	value.size = sizeof(record);
 	
 	rc = dbp->put(dbp, NULL, &key, &value, 0);
 	
@@ -326,4 +308,112 @@ static ssize_t headers_db_get_by_height(struct block_headers_db * db, uint32_t h
 {
 	return -1;
 }
+
+
+static int db_cursor_pget(struct block_headers_db * db, u_int32_t flags)
+{
+	db_private_t * priv = db->priv;
+	int rc = 0;
+	assert(priv && priv->dbp && priv->sdbp_height);
+	DBC * cursorp = NULL;
+	DB * sdbp = priv->sdbp_height;
 	
+	db->num_records = 0;
+	memset(db->hashes, 0, sizeof(*db->hashes) * db->limits);
+	memset(db->records, 0, sizeof(*db->records) * db->limits);
+	
+	DBT skey, key, value;
+	memset(&key, 0, sizeof(key));
+	memset(&skey, 0, sizeof(skey));
+	memset(&value, 0, sizeof(value));
+	
+	skey.data = &db->offset;
+	skey.ulen = sizeof(uint32_t);
+	skey.flags = DB_DBT_USERMEM;
+	
+	key.data = &db->hashes[0];
+	key.ulen = sizeof(db->hashes[0]);
+	key.flags = DB_DBT_USERMEM;
+	
+	value.data = &db->records[0];
+	value.ulen = sizeof(db->records[0]);
+	value.flags = DB_DBT_USERMEM;
+	
+
+	rc = sdbp->cursor(sdbp, NULL, &cursorp, DB_READ_COMMITTED);
+	if(rc) {
+		sdbp->err(sdbp, rc, "%s() create cursor failed.", __FUNCTION__);
+		abort();
+	}
+	
+	switch(flags)
+	{
+	case DB_FIRST: 
+		db->offset = 0; 
+		break;
+	case DB_PREV: 
+		db->offset -= db->limits; 
+		if(db->offset < 0) db->offset = 0; 
+		break;
+	case DB_NEXT: 
+		++db->offset; 
+		break;
+	default:
+		break;
+	}
+	
+
+	rc = cursorp->pget(cursorp, &skey, &key, &value, DB_SET);
+	if(rc) {
+		if(rc != DB_NOTFOUND || flags == DB_SET) {
+			sdbp->err(sdbp, rc, "%s(): cursorp->pget(flags=%u) failed.", __FUNCTION__, flags);
+			return rc;
+		}
+	}else {
+		++db->num_records;
+	}
+	
+	for(int i = db->num_records; i < db->limits; ++i, ++db->num_records) {
+		key.data = &db->hashes[i];
+		value.data = &db->records[i];
+		
+		rc = cursorp->pget(cursorp, &skey, &key, &value, DB_NEXT);
+		if(rc) break;
+	}
+	
+	if(rc && rc != DB_NOTFOUND) {
+		sdbp->err(sdbp, rc, "%s(): cursorp->pget(flags=%u) failed.", __FUNCTION__, flags);
+		abort();
+	}
+	
+	fprintf(stderr, "%s(): offset: %d, num_records=%d, rc = %d\n", 
+		__FUNCTION__, 
+		db->offset, db->num_records, 
+		rc);
+	
+	cursorp->close(cursorp);
+	return rc;
+}
+
+
+static int headers_db_move_to(struct block_headers_db * db, int height)
+{
+	db->offset = height;
+	return db_cursor_pget(db, DB_SET);
+}
+static int headers_db_first(struct block_headers_db * db)
+{
+	return db_cursor_pget(db, DB_FIRST);
+}
+static int headers_db_prior(struct block_headers_db * db)
+{
+	return db_cursor_pget(db, DB_PREV);
+}
+static int headers_db_next(struct block_headers_db * db)
+{
+	return db_cursor_pget(db, DB_NEXT);
+}
+static int headers_db_last(struct block_headers_db * db)
+{
+	return db_cursor_pget(db, DB_LAST);
+}

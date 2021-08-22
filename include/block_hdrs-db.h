@@ -40,11 +40,12 @@ typedef struct block_headers_db
 	/* Pagination */
 	int limits;
 	int offset;
+	int num_records;
 	
 	uint256_t * hashes;
 	struct block_header_record * records;
 	
-	ssize_t (* move_to)(struct block_headers_db * db, int height);
+	int (* move_to)(struct block_headers_db * db, int height);
 	int (* first)(struct block_headers_db * db);
 	int (* prior)(struct block_headers_db * db);
 	int (* next)(struct block_headers_db * db);

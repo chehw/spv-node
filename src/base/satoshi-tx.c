@@ -911,7 +911,7 @@ void satoshi_tx_dump(const satoshi_tx_t * tx)
 	{
 		const satoshi_txin_t * txin = &tx->txins[i];
 		printf("\t== txins[%d] ==\n", (int)i);
-		printf("\t" "outpoint: "); dump(&txin->outpoint.prev_hash, 32); printf(" %.8d\n", (int)txin->outpoint.index);
+		printf("\t" "outpoint: "); dump(&txin->outpoint.prev_hash, 32); printf(" %.8u\n", (uint32_t)txin->outpoint.index);
 		printf("\t" "sig_scripts: (cb=%d)", (int)txin->cb_scripts); 
 			dump(varstr_getdata_ptr(txin->scripts), txin->cb_scripts); printf("\n");
 		

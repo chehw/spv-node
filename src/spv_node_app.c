@@ -127,8 +127,7 @@ int app_context_parse_args(app_context_t * app, int argc, char ** argv)
 {
 	int rc = spv_node_parse_args(app->spv, argc, argv);
 	assert(0 == rc);
-	
-	
+
 	return rc;
 }
 

@@ -681,6 +681,8 @@ static inline int parse_op_checksigverify(satoshi_script_stack_t * stack, satosh
 	crypto_pubkey_t * pubkey = NULL;
 	crypto_signature_t * sig = NULL;
 	unsigned char * sig_der = NULL;
+	satoshi_script_data_t * sdata_pubkey = NULL;
+	satoshi_script_data_t * sdata_sig_hashtype = NULL;
 	
 	if(stack->count < 2)	// must have { sig_with_hashtype, pubkey }
 	{
@@ -698,9 +700,6 @@ static inline int parse_op_checksigverify(satoshi_script_stack_t * stack, satosh
 	assert(crypto);
 	
 	// pop pubkey
-	satoshi_script_data_t * sdata_pubkey = NULL;
-	satoshi_script_data_t * sdata_sig_hashtype = NULL;
-	
 	sdata_pubkey = stack->pop(stack);
 	if(NULL == sdata_pubkey) {
 		scripts_parser_error_handler("no pubkey.");

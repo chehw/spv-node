@@ -85,7 +85,7 @@ uint256_t compact_to_uint256(const compact_uint256_t * cint)
 	int num_bytes = 3;
 	int num_zeros = 32 - cint->exp;
 	
-	if((cint->exp + num_bytes) >= 32) num_bytes = 32 - cint->exp; 
+	if(cint->exp < 3) num_bytes = cint->exp;
 	if((num_zeros + num_bytes) >= 32) num_bytes = 32 - num_zeros;
 //	debug_printf("num_zeros: %d, num_bytes: %d, exp: 0x%.2x", num_zeros, num_bytes, (int)cint->exp);
 	

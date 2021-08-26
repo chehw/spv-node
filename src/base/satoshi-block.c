@@ -236,7 +236,28 @@ ssize_t satoshi_block_serialize(const satoshi_block_t * block, unsigned char ** 
 	return block_size;
 }
 
+void satoshi_block_header_dump(const struct satoshi_block_header * hdr)
+{
+	printf("================= %s(%p) ======================\n", __FUNCTION__, hdr);
+	printf("version: 0x%.8x\n", hdr->version);
+	dump_line("prev_hash: ", hdr->prev_hash, 32);
+	dump_line("merkel_root: ", hdr->merkle_root, 32);
+	printf("timestamp: %ld\n", (long)hdr->timestamp);
+	printf("bits: 0x%.8x\n", hdr->bits);
+	printf("nonce: 0x%.8x\n", hdr->nonce);
+	return;
+}
+
 void satoshi_block_dump(const satoshi_block_t * block)
 {
-	
+	printf("================= %s(%p) ======================\n", __FUNCTION__, block);
+	satoshi_block_header_dump(&block->hdr);
+	printf("txn_count: %d\n", (int)block->txn_count);
+	for(int i = 0; i < block->txn_count; ++i) {
+		satoshi_tx_t * tx = &block->txns[i];
+		printf("tx[%d]: hash=", i);
+		dump(tx->txid, 32);
+		printf("\n");
+		satoshi_tx_dump(tx);
+	}
 }

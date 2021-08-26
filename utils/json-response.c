@@ -262,7 +262,7 @@ static json_object * http_post(struct http_json_context	* http, const char * url
 	
 	json_object * jresponse = NULL;
 	CURL * curl = http->curl;
-	curl_easy_reset(curl);
+	
 	
 	struct json_response_context * response = http->response;
 	json_response_context_clear(response);
@@ -301,6 +301,8 @@ static json_object * http_post(struct http_json_context	* http, const char * url
 	}
 	
 	if(response->jresponse) jresponse = json_object_get(response->jresponse);
+	
+	curl_easy_reset(curl);
 	return jresponse;
 }
 static json_object * http_delete(struct http_json_context * http, const char * url, const char * body, ssize_t length)

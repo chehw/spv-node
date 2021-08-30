@@ -287,3 +287,29 @@ int connect2(const char * host, const char * port, struct sockaddr_storage * p_a
 	freeaddrinfo(serv_info);
 	return fd;
 }
+
+
+size_t load_file(const char * filename, char ** p_data)
+{
+	FILE * fp = fopen(filename, "r");
+	if(NULL == fp) {
+		perror("fopen()");
+		return 0;
+	}
+	
+	ssize_t file_size = 0;
+	ssize_t length = 0;
+	fseek(fp, 0, SEEK_END);
+	file_size = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	
+	if(file_size > 0) {
+		char * data = calloc(file_size + 1, 1);
+		length = fread(data, 1, file_size, fp);
+		assert(length == file_size);
+		
+		*p_data = data;
+	}
+	fclose(fp);
+	return length;
+}

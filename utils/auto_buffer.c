@@ -71,7 +71,7 @@ int auto_buffer_resize(auto_buffer_t * buf, size_t size)
 }
 void auto_buffer_cleanup(auto_buffer_t * buf)
 {
-	debug_printf("%s(%p): data=%p", __FUNCTION__, buf, buf?buf->data:NULL);
+	//~ debug_printf("%s(%p): data=%p", __FUNCTION__, buf, buf?buf->data:NULL);
 	if(NULL == buf) return;
 	if(buf->data) free(buf->data);
 	memset(buf, 0, sizeof(*buf));

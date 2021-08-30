@@ -20,6 +20,9 @@ void dump2(FILE * fp, const void * data, ssize_t length);
 void hash256(const void * data, size_t length, uint8_t hash[static 32]);
 void hash160(const void * data, size_t length, uint8_t hash[static 20]);
 
+size_t load_file(const char * filename, char ** p_data);
+
+
 int make_nonblock(int fd);
 void global_lock();
 void global_unlock();

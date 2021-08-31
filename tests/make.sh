@@ -70,6 +70,12 @@ case "$target" in
 			-lm -lgmp -lgnutls -ldb -lpthread -lsecp256k1
 		RET=$?
 		;;
+		
+	asicboost)
+		${LINKER} -g ${CFLAGS} \
+			-o test_asicboost asicboost.c \
+			-lm -lgmp -lgnutls
+		;;
 	*)
 		echo "build nothing"
 		exit 1

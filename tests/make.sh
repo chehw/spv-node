@@ -73,9 +73,23 @@ case "$target" in
 		
 	asicboost)
 		${LINKER} -g ${CFLAGS} \
+			-D_TEST_ASIC_BOOST -D_STAND_ALONE \
 			-o test_asicboost asicboost.c \
+			../utils/utils.c \
 			-lm -lgmp -lgnutls
+		RET=$?
 		;;
+	test_gpu_hash256_asicboost)
+		${LINKER} -g ${CFLAGS} \
+			-o test_gpu_hash256_asicboost \
+			test_gpu_hash256_asicboost.c \
+			asicboost.c \
+			../tools/opencl-context.c \
+			../utils/utils.c \
+			-lm -lgmp -lgnutls -lOpenCL -lpthread
+		RET=$?
+		;;
+		
 	*)
 		echo "build nothing"
 		exit 1

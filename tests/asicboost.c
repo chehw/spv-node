@@ -72,7 +72,7 @@ static const uint32_t K[64] = {
 #define SSIG0(x)	(ROTR_32(x,7) ^ ROTR_32(x,18) ^ (x>>3))
 #define SSIG1(x)	(ROTR_32(x,17) ^ ROTR_32(x,19) ^ (x>>10))
 
-static void sha256_chunk(const uint32_t chunk[static 16], uint32_t s[static 8])
+void sha256_chunk(const uint32_t chunk[static 16], uint32_t s[static 8])
 {
 	uint32_t a = s[0], b = s[1], c = s[2], d = s[3], e = s[4], f = s[5], g = s[6], h = s[7];
 	uint32_t w[64];
@@ -112,19 +112,19 @@ static void sha256_chunk(const uint32_t chunk[static 16], uint32_t s[static 8])
 	return;
 }
 
+void sha256_chunk_init(uint32_t * s, const uint32_t * s0)
+{
+	if(NULL == s0) s0 = H;
+	memcpy(s, s0, sizeof(uint32_t) * 8);
+	return;
+}
 
 static inline void htobe32_array(uint32_t h[], int length, const uint32_t s[])
 {
 	for(int i = 0; i < length; ++i) h[i] = htobe32(s[i]);
 }
 
-
-void dump2(FILE * fp, const void * _data, ssize_t length)
-{
-	const unsigned char * data = _data;
-	for(ssize_t i = 0; i < length; ++i) fprintf(fp, "%.2x", data[i]);
-	
-}
+#if defined(_TEST_ASIC_BOOST) && defined(_STAND_ALONE)
 int main(int argc, char **argv)
 {
 	unsigned char msg[128] = { 
@@ -148,7 +148,7 @@ int main(int argc, char **argv)
 	
 	
 	uint32_t s0[8];
-	memcpy(s0, H, sizeof(s0));
+	sha256_chunk_init(s0, NULL);
 	sha256_chunk((uint32_t *)msg, s0);
 	
 	unsigned char hash[32];
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 		printf("nonce: %u\n", nonce);
 		
 		uint32_t s[8];
-		memcpy(s, s0, sizeof(s));
+		sha256_chunk_init(s, s0);
 		*(uint32_t *)(msg + 76) = nonce;
 		
 		sha256_chunk((uint32_t *)(msg + 64), s);
@@ -182,4 +182,5 @@ int main(int argc, char **argv)
 	} 
 	return 0;
 }
+#endif
 

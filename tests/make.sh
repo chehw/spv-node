@@ -90,6 +90,17 @@ case "$target" in
 		RET=$?
 		;;
 		
+	invoice-address)
+		${LINKER} -g ${CFLAGS} \
+			-D_TEST_INVOICE_ADDRESS -D_STAND_ALONE \
+			-o test_invoice_address \
+			../src/invoice-address.c \
+			../src/base/ripemd160.c \
+			../utils/utils.c \
+			-lm -lgmp -lgnutls -lsecp256k1 -lpthread
+		RET=$?
+		;;
+		
 	*)
 		echo "build nothing"
 		exit 1

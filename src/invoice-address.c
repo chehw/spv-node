@@ -63,6 +63,54 @@ static const uint32_t s_bech32_final_constants[2] = {
  *  ripemd160: 751e76e8199196d454941c45d1b3a323f1433bd6
 **/
 
+static inline void base32_to_base256_chunk(const uint8_t b32[static restrict 8], uint8_t b256[static restrict 5])
+{
+	b256[0] = (b32[0]<<3) | (b32[1]>>2);
+	b256[1] = ((b32[1]&0x03)<<6) | (b32[2]<<1) | (b32[3]>>4);
+	b256[2] = ((b32[3]&0x0F)<<4) | (b32[4]>>1);
+	b256[3] = ((b32[4]&0x01)<<7) | (b32[5]<<2) | (b32[6]>>3);
+	b256[4] = ((b32[6]&0x07)<<5) | (b32[7] & 0x1F);
+	return;
+}
+static inline size_t base32_to_base256_padding(const uint8_t * restrict b32, size_t length, uint8_t * restrict b256)
+{
+	assert(length > 0 && length < 8);
+	if(length == 0 || length > 7) return 0;
+	
+	uint8_t * u = b256;
+	if(length > 0) {
+		*u    = (b32[0]<<3);
+	}
+	if(length > 1) {
+		*u++ |= (b32[1]>>2);
+		*u    = (b32[1]<<6);
+	}
+	if(length > 2) {
+		*u   |= (b32[2]<<1);
+	}
+	if(length > 3) {
+		*u++ |= (b32[3]>>4);
+		*u    = (b32[3]<<4);
+	}
+	if(length > 4) {
+		*u++ |= (b32[4]>>1);
+		*u    = (b32[4]<<7);
+	}
+	if(length > 5) {
+		*u  |= (b32[5]<<2);
+	}
+	if(length > 6) {
+		*u  |= (b32[6]>>3);   
+		
+		// discard padding zeros 
+		assert((b32[6] & 0x07) == 0);
+	}
+	
+	return (u - b256) + 1;
+}
+
+
+
 //~ 01110101 00011110 01110110 11101000 00011001 
 //~ 10010001 10010110 11010100 01010100 10010100
 //~ 00011100 01000101 11010001 10110011 10100011
@@ -88,7 +136,7 @@ static inline void base256_to_base32_chunk(const uint8_t b256[static restrict 5]
 	b32[7] = (b256[4] & 0x1F);
 	return;
 }
-static inline size_t base256_to_base32_padding(const uint8_t * b256, size_t length, uint8_t * b32)
+static inline size_t base256_to_base32_padding(const uint8_t * restrict b256, size_t length, uint8_t * restrict b32)
 {
 	assert(length < 5);
 	
@@ -111,7 +159,7 @@ static inline size_t base256_to_base32_padding(const uint8_t * b256, size_t leng
 		*b++  = ((b256[3] & 0x7F)>>2);
 		*b    = ((b256[3] & 0x03)<<3);
 	}
-	return (b - b32);
+	return (b - b32) + 1;
 }
 
 static inline uint32_t bech32_polymod(uint32_t checksum)
@@ -126,7 +174,7 @@ static inline uint32_t bech32_polymod(uint32_t checksum)
 	return checksum;
 }
 
-static inline ssize_t bech32_encode(uint8_t version, 
+ssize_t bech32_encode(uint8_t version, 
 	const char * hrp, // "bc" for mainnet, or "tb" for testnet
 	const unsigned char * data, size_t length, // pubkey hash
 	char * bech32)
@@ -209,10 +257,10 @@ size_t pubkey_to_bech32(const unsigned char pubkey[], size_t cb_pubkey, char bec
 	//hash160(pubkey, cb_pubkey, hash);
 	
 	sha256_hash(pubkey, cb_pubkey, hash);
-	dump_line("sha256: ", hash, 32);
+//	dump_line("sha256: ", hash, 32);
 	
 	ripemd160_hash(hash, 32, hash);
-	dump_line("ripemd: ", hash, 20);
+//	dump_line("ripemd: ", hash, 20);
 	
 	ssize_t cb_bech = bech32_encode(0, "bc", hash, 20, bech);
 	assert(cb_bech > 0 && cb_bech < 90);
@@ -243,6 +291,71 @@ int main(int argc, char **argv)
 
 
 	assert(0 == strcmp(bech, VERIFY_BECH32_ADDR));
+	
+	
+	/**
+	 * test 1. test chunk_encode
+	**/
+	// 75 1e 76 e8 19 9196d454941c45d1b3a323f1433bd6
+	// test padding
+	// 0e 14 0f 07 0d 1a 00 19 12060b0d081504140311021d030c1d03040f1814060e1e16
+	
+	if(1) {
+		printf("\n========== TEST chunk encode/decode =====================\n");
+		uint8_t hash[20];
+		uint8_t b32[32] = { 0 };
+		
+		hash160(pubkey, cb_pubkey, hash);
+		dump_line("hash: ", hash, 20);
+		
+		for(int i = 0; i < 4; ++i){
+			base256_to_base32_chunk(&hash[i*5], &b32[i*8]);
+		}
+		dump_line("b32 : ", b32, 32);
+		
+		uint8_t b256[20] = { 0 };
+		for(int i = 0; i < 4; ++i) {
+			base32_to_base256_chunk(&b32[i * 8], &b256[i * 5]);
+		}
+		dump_line("b256: ", b256, 20);
+	}
+	
+	
+	/**
+	 * test 2. test paddings encode/decode
+	**/
+	if(1) {
+		printf("\n========== TEST paddings encode/decode =====================\n");
+		
+		//~ 01110101 00011110 01110110 11101000 00011001 
+		//~ 01110 10100 01111 00111 01101 11010 00000 11001 
+		uint8_t b256[] = { 0x75, 0x1e, 0x76, 0xe8, 0x19 };
+		uint8_t b32[8] = { 0 };
+		ssize_t cb = base256_to_base32_padding(b256, 4, b32);
+		
+		printf("padding_encode::cb=%d\n", (int)cb);
+		for(int i = 0; i < cb; ++i) {
+			// print bits
+			uint8_t c = b32[i];
+			printf("%d%d%d%d%d(%.2x) ", 
+				((c & 0x10) != 0), 
+				((c & 0x08) != 0), 
+				((c & 0x04) != 0), 
+				((c & 0x02) != 0), 
+				((c & 0x01) != 0),
+				c
+				); 
+			
+		}
+		printf("\n");
+		
+		uint8_t u[5] = { 0 };
+		cb = base32_to_base256_padding(b32, cb, u);
+		printf("padding_decode::cb = %d\n", (int)cb);
+		for(int i = 0; i < cb; ++i) printf("%.2x ", u[i]);
+		printf("\n");
+	}
+	
 	return 0;
 }
 #endif
